@@ -12,7 +12,6 @@ from hummingbot.core.clock cimport Clock
 from hummingbot.core.data_type.common import OrderType, PriceType, TradeType
 from hummingbot.core.data_type.limit_order cimport LimitOrder
 from hummingbot.core.data_type.limit_order import LimitOrder
-from hummingbot.core.data_type.order_book import OrderBook
 from hummingbot.core.network_iterator import NetworkStatus
 from hummingbot.core.utils import map_df_to_str
 from hummingbot.strategy.asset_price_delegate cimport AssetPriceDelegate
@@ -828,7 +827,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
     cdef object c_create_base_proposal(self):
         cdef:
             ExchangeBase market = self._market_info.market
-            OrderBook order_book = self._market_info.order_book
+            object order_book = self._market_info.order_book
             list buys = []
             list sells = []
             list order_slot_buys = []
@@ -1283,7 +1282,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
             bint to_defer_canceling = False
             int real_bid_order_slot
             int real_ask_order_slot
-            OrderBook order_book = self._market_info.order_book
+            object order_book = self._market_info.order_book
         if len(active_orders) == 0:
             return
         if proposal is not None and \
@@ -1332,7 +1331,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         cdef:
             list active_orders = self.market_info_to_active_orders.get(self._market_info, [])
             object price = self.get_price()
-            OrderBook order_book = self._market_info.order_book
+            object order_book = self._market_info.order_book
         active_orders = [order for order in active_orders
                          if order.client_order_id not in self.hanging_order_ids]
         for order in active_orders:
