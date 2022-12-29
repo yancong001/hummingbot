@@ -894,9 +894,9 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                     order_slot_buys.append(i)
             for i in sells:
                 if ask_order_slot_price > i.price:
-                    order_slot_buys.append(PriceSize(bid_order_slot_price, i.size))
+                    order_slot_sells.append(PriceSize(bid_order_slot_price, i.size))
                 else:
-                    order_slot_buys.append(i)
+                    order_slot_sells.append(i)
             buys, sells = order_slot_buys, order_slot_sells
         return Proposal(buys, sells)
 
