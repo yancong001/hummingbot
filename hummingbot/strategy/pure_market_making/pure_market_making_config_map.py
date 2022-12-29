@@ -147,6 +147,52 @@ pure_market_making_config_map = {
                   type_str="decimal",
                   validator=lambda v: validate_decimal(v, 0, 100, inclusive=False),
                   prompt_on_new=True),
+    "order_slot_enabled":
+        ConfigVar(key="order_slot_enabled",
+                  prompt="Would you like to enable order_slot_enabled (Yes/No) >>> ",
+                  type_str="bool",
+                  default=True,
+                  validator=validate_bool),
+    "bid_order_slot":
+        ConfigVar(key="bid_order_slot",
+                  prompt="How many slots away from the mid price do you want to place the "
+                         "first bid order? (Enter 1 to indicate 1 order slots) >>> ",
+                  type_str="decimal",
+                  validator=lambda v: validate_decimal(v, 0, 100, inclusive=False),
+                  prompt_on_new=True),
+    "ask_order_slot":
+        ConfigVar(key="ask_order_slot",
+                  prompt="How many slots away from the mid price do you want to place the "
+                         "first ask order? (Enter 1 to indicate 1 order slots) >>> ",
+                  type_str="decimal",
+                  validator=lambda v: validate_decimal(v, 0, 100, inclusive=False),
+                  prompt_on_new=True),
+    "minimum_order_slot_close":
+        ConfigVar(key="minimum_order_slot_close",
+                  prompt="At what minimum order_slot should the bot automatically cancel orders? (Enter 1 for 1%) >>> ",
+                  type_str="decimal",
+                  validator=lambda v: validate_decimal(v, 0, 100, inclusive=False),
+                  prompt_on_new=True),
+    "max_order_slot_close":
+        ConfigVar(key="max_order_slot_close",
+                  prompt="At what max order_slot should the bot automatically cancel orders? (Enter 1 for 1%) >>> ",
+                  type_str="decimal",
+                  validator=lambda v: validate_decimal(v, 0, 100, inclusive=False),
+                  prompt_on_new=True),
+    "minimum_order_slot_close_stay_time":
+        ConfigVar(key="minimum_order_slot_close_stay_time",
+                  prompt="How long do you want to stay in minimum_order_slot and than close it (in seconds)?",
+                  type_str="float",
+                  default=1.0,
+                  validator=lambda v: validate_decimal(v, 0, inclusive=False),
+                  prompt_on_new=True),
+    "max_order_slot_close_check_time":
+        ConfigVar(key="max_order_slot_close",
+                  prompt="How long do you want to check max_order_slot and than close it (in seconds)?",
+                  type_str="float",
+                  default=5.0,
+                  validator=lambda v: validate_decimal(v, 0, inclusive=False),
+                  prompt_on_new=True),
     "minimum_spread":
         ConfigVar(key="minimum_spread",
                   prompt="At what minimum spread should the bot automatically cancel orders? (Enter 1 for 1%) >>> ",

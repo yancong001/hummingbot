@@ -11,6 +11,13 @@ cdef class PureMarketMakingStrategy(StrategyBase):
 
         object _bid_spread
         object _ask_spread
+        bint _order_slot_enabled
+        object _bid_order_slot
+        object _ask_order_slot
+        object _minimum_order_slot_close
+        object _max_order_slot_close
+        object _minimum_order_slot_close_stay_time
+        object _max_order_slot_close_check_time
         object _minimum_spread
         object _order_amount
         int _order_levels
@@ -46,6 +53,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         object _order_override
 
         double _cancel_timestamp
+        double _cancel_order_slot_timestamp
         double _create_timestamp
         object _limit_order_type
         bint _all_markets_ready

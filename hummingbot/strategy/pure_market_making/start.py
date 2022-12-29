@@ -26,6 +26,13 @@ def start(self):
         max_order_age = c_map.get("max_order_age").value
         bid_spread = c_map.get("bid_spread").value / Decimal('100')
         ask_spread = c_map.get("ask_spread").value / Decimal('100')
+        order_slot_enabled = c_map.get("order_slot_enabled").value
+        bid_order_slot = c_map.get("bid_order_slot").value
+        ask_order_slot = c_map.get("ask_order_slot").value
+        minimum_order_slot_close = c_map.get("minimum_order_slot_close").value
+        max_order_slot_close = c_map.get("max_order_slot_close").value
+        minimum_order_slot_close_stay_time = c_map.get("minimum_order_slot_close_stay_time").value
+        max_order_slot_close_check_time = c_map.get("max_order_slot_close_check_time").value
         minimum_spread = c_map.get("minimum_spread").value / Decimal('100')
         price_ceiling = c_map.get("price_ceiling").value
         price_floor = c_map.get("price_floor").value
@@ -107,6 +114,13 @@ def start(self):
             market_info=MarketTradingPairTuple(*maker_data),
             bid_spread=bid_spread,
             ask_spread=ask_spread,
+            order_slot_enabled=order_slot_enabled,
+            bid_order_slot=bid_order_slot,
+            ask_order_slot=ask_order_slot,
+            minimum_order_slot_close=minimum_order_slot_close,
+            max_order_slot_close=max_order_slot_close,
+            minimum_order_slot_close_stay_time=minimum_order_slot_close_stay_time,
+            max_order_slot_close_check_time=max_order_slot_close_check_time,
             order_levels=order_levels,
             order_amount=order_amount,
             order_level_spread=order_level_spread,
