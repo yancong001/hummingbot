@@ -169,13 +169,13 @@ pure_market_making_config_map = {
                   prompt_on_new=True),
     "minimum_order_slot_close":
         ConfigVar(key="minimum_order_slot_close",
-                  prompt="At what minimum order_slot should the bot automatically cancel orders? (Enter 1 for 1%) >>> ",
+                  prompt="At what minimum order_slot should the bot automatically cancel orders? (Enter 1 to indicate 1 order slots) >>> ",
                   type_str="decimal",
                   validator=lambda v: validate_decimal(v, 0, 100, inclusive=False),
                   prompt_on_new=True),
     "max_order_slot_close":
         ConfigVar(key="max_order_slot_close",
-                  prompt="At what max order_slot should the bot automatically cancel orders? (Enter 1 for 1%) >>> ",
+                  prompt="At what max order_slot should the bot automatically cancel orders? (Enter 1 to indicate 1 order slots) >>> ",
                   type_str="decimal",
                   validator=lambda v: validate_decimal(v, 0, 100, inclusive=False),
                   prompt_on_new=True),

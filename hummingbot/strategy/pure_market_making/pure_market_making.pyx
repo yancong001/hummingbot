@@ -183,11 +183,11 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         return self._max_order_slot_close
 
     @property
-    def minimum_order_slot_close_stay_time(self) -> Decimal:
+    def minimum_order_slot_close_stay_time(self) -> float:
         return self._minimum_order_slot_close_stay_time
 
     @property
-    def max_order_slot_close_check_time(self) -> Decimal:
+    def max_order_slot_close_check_time(self) -> float:
         return self._max_order_slot_close_check_time
 
     @property
@@ -1300,8 +1300,8 @@ cdef class PureMarketMakingStrategy(StrategyBase):
             real_bid_order_slot = 0
             real_ask_order_slot = 0
             bids_df, asks_df = order_book.snapshot
-            farthest_bid_active_buy_prices = min(active_buy_prices)
-            farthest_ask_active_sell_prices = max(active_sell_prices)
+            farthest_bid_active_buy_prices = min(active_buy_prices) if active_buy_prices else -999999
+            farthest_ask_active_sell_prices = max(active_sell_prices) if active_sell_prices else 999999
             for i in range(20):
                 bid_order_slot_price = bids_df.iloc[i]["price"]
                 if bid_order_slot_price <= farthest_bid_active_buy_prices:
@@ -1347,13 +1347,15 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                 if order.is_buy:
                     for i in range(20):
                         bid_order_slot_price = bids_df.iloc[i]["price"]
-                        if bid_order_slot_price <= order.price and i <= self._minimum_order_slot_close:
+                        if bid_order_slot_price <= order.price and i <= self._minimum_order_slot_close and \
+                                order.age > self._minimum_order_slot_close_stay_time:
                             self.c_cancel_order(self._market_info, order.client_order_id)
                             break
                 else:
                     for i in range(20):
                         ask_order_slot_price = asks_df.iloc[i]["price"]
-                        if ask_order_slot_price >= order.price and i <= self._minimum_order_slot_close:
+                        if ask_order_slot_price >= order.price and i <= self._minimum_order_slot_close and \
+                            order.age > self._minimum_order_slot_close_stay_time:
                             self.c_cancel_order(self._market_info, order.client_order_id)
                             break
 
