@@ -148,3 +148,10 @@ should_wait_order_cancel_confirmation: True
 
 # For more detailed information, see:
 # https://docs.hummingbot.io/strategies/pure-market-making/#configuration-parameters
+order_slot_enabled: null
+bid_order_slot: null
+ask_order_slot: null
+minimum_order_slot_close: null
+max_order_slot_close: null
+minimum_order_slot_close_stay_time: null
+max_order_slot_close_check_time: null
