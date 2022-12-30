@@ -889,12 +889,12 @@ cdef class PureMarketMakingStrategy(StrategyBase):
             ask_order_slot_price = asks_df.iloc[int(self.ask_order_slot)]["price"]
             for i in buys:
                 if bid_order_slot_price < i.price:
-                    order_slot_buys.append(PriceSize(bid_order_slot_price, i.size))
+                    order_slot_buys.append(PriceSize(Decimal(str(bid_order_slot_price)), i.size))
                 else:
                     order_slot_buys.append(i)
             for i in sells:
                 if ask_order_slot_price > i.price:
-                    order_slot_sells.append(PriceSize(ask_order_slot_price, i.size))
+                    order_slot_sells.append(PriceSize(Decimal(str(ask_order_slot_price)), i.size))
                 else:
                     order_slot_sells.append(i)
             buys, sells = order_slot_buys, order_slot_sells
@@ -1323,8 +1323,6 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                     self.c_cancel_order(self._market_info, order.client_order_id)
         # else:
         #     self.set_timers()
-        if self.order_slot_enabled:
-            pass
 
     # Cancel Non-Hanging, Active Orders if Spreads are below minimum_spread
     cdef c_cancel_orders_below_min_spread(self):
@@ -1348,14 +1346,14 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                     for i in range(20):
                         bid_order_slot_price = bids_df.iloc[i]["price"]
                         if bid_order_slot_price <= order.price and i <= self._minimum_order_slot_close and \
-                                order.age > self._minimum_order_slot_close_stay_time:
+                                order.age() > self._minimum_order_slot_close_stay_time:
                             self.c_cancel_order(self._market_info, order.client_order_id)
                             break
                 else:
                     for i in range(20):
                         ask_order_slot_price = asks_df.iloc[i]["price"]
                         if ask_order_slot_price >= order.price and i <= self._minimum_order_slot_close and \
-                            order.age > self._minimum_order_slot_close_stay_time:
+                            order.age() > self._minimum_order_slot_close_stay_time:
                             self.c_cancel_order(self._market_info, order.client_order_id)
                             break
 
@@ -1432,7 +1430,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         if self._cancel_timestamp <= self._current_timestamp:
             self._cancel_timestamp = min(self._create_timestamp, next_cycle)
         if self._cancel_order_slot_timestamp <= self._current_timestamp:
-            self._cancel_order_slot_timestamp = min(self._create_timestamp, next_order_slot_close_time)
+            self._cancel_order_slot_timestamp = next_order_slot_close_time
 
     def notify_hb_app(self, msg: str):
         if self._hb_app_notification:

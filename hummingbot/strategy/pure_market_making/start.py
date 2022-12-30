@@ -27,10 +27,10 @@ def start(self):
         bid_spread = c_map.get("bid_spread").value / Decimal('100')
         ask_spread = c_map.get("ask_spread").value / Decimal('100')
         order_slot_enabled = c_map.get("order_slot_enabled").value
-        bid_order_slot = c_map.get("bid_order_slot").value
-        ask_order_slot = c_map.get("ask_order_slot").value
-        minimum_order_slot_close = c_map.get("minimum_order_slot_close").value
-        max_order_slot_close = c_map.get("max_order_slot_close").value
+        bid_order_slot = c_map.get("bid_order_slot").value - Decimal('1')
+        ask_order_slot = c_map.get("ask_order_slot").value - Decimal('1')
+        minimum_order_slot_close = c_map.get("minimum_order_slot_close").value - Decimal('1')
+        max_order_slot_close = c_map.get("max_order_slot_close").value - Decimal('1')
         minimum_order_slot_close_stay_time = c_map.get("minimum_order_slot_close_stay_time").value
         max_order_slot_close_check_time = c_map.get("max_order_slot_close_check_time").value
         minimum_spread = c_map.get("minimum_spread").value / Decimal('100')

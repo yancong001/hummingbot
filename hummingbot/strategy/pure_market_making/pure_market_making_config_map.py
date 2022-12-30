@@ -187,7 +187,7 @@ pure_market_making_config_map = {
                   validator=lambda v: validate_decimal(v, 0, inclusive=False),
                   prompt_on_new=True),
     "max_order_slot_close_check_time":
-        ConfigVar(key="max_order_slot_close",
+        ConfigVar(key="max_order_slot_close_check_time",
                   prompt="How long do you want to check max_order_slot and than close it (in seconds)?",
                   type_str="float",
                   default=5.0,
