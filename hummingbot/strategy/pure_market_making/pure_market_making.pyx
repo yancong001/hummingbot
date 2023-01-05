@@ -885,16 +885,16 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                         sells.append(PriceSize(price, size))
         if self.order_slot_enabled:
             bids_df, asks_df = order_book.snapshot
-            bid_order_slot_price = bids_df.iloc[int(self.bid_order_slot)]["price"]
-            ask_order_slot_price = asks_df.iloc[int(self.ask_order_slot)]["price"]
+            bid_order_slot_price = Decimal(str(bids_df.iloc[int(self.bid_order_slot)]["price"]))
+            ask_order_slot_price = Decimal(str(asks_df.iloc[int(self.ask_order_slot)]["price"]))
             for i in buys:
                 if bid_order_slot_price < i.price:
-                    order_slot_buys.append(PriceSize(Decimal(str(bid_order_slot_price)), i.size))
+                    order_slot_buys.append(PriceSize(bid_order_slot_price, i.size))
                 else:
                     order_slot_buys.append(i)
             for i in sells:
                 if ask_order_slot_price > i.price:
-                    order_slot_sells.append(PriceSize(Decimal(str(ask_order_slot_price)), i.size))
+                    order_slot_sells.append(PriceSize(ask_order_slot_price, i.size))
                 else:
                     order_slot_sells.append(i)
             buys, sells = order_slot_buys, order_slot_sells
@@ -1272,19 +1272,43 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         """
         Cancels active non hanging orders, checks if the order prices are within tolerance threshold
         """
-        if self._cancel_timestamp > self._current_timestamp:
-            return
-
         cdef:
             list active_orders = self.active_non_hanging_orders
             list active_buy_prices = []
-            list active_sells = []
+            list active_sell_prices = []
             bint to_defer_canceling = False
             int real_bid_order_slot
             int real_ask_order_slot
             object order_book = self._market_info.order_book
         if len(active_orders) == 0:
             return
+        if self.order_slot_enabled and self._cancel_order_slot_timestamp <= self._current_timestamp:
+            active_buy_prices = [Decimal(str(o.price)) for o in active_orders if o.is_buy]
+            active_sell_prices = [Decimal(str(o.price)) for o in active_orders if not o.is_buy]
+            real_bid_order_slot = 0
+            real_ask_order_slot = 0
+            bids_df, asks_df = order_book.snapshot
+            farthest_bid_active_buy_prices = min(active_buy_prices) if active_buy_prices else -999999
+            farthest_ask_active_sell_prices = max(active_sell_prices) if active_sell_prices else 999999
+            for i in range(20):
+                bid_order_slot_price = Decimal(str(bids_df.iloc[i]["price"]))
+                if bid_order_slot_price <= farthest_bid_active_buy_prices:
+                    real_bid_order_slot = i
+                    break
+            for i in range(20):
+                ask_order_slot_price = Decimal(str(asks_df.iloc[i]["price"]))
+                if ask_order_slot_price >= farthest_ask_active_sell_prices:
+                    real_ask_order_slot = i
+                    break
+            if real_bid_order_slot >=self._max_order_slot_close or real_ask_order_slot >= self._max_order_slot_close:
+                self._hanging_orders_tracker.update_strategy_orders_with_equivalent_orders()
+                for order in self.active_non_hanging_orders:
+                    # If is about to be added to hanging_orders then don't cancel
+                    if not self._hanging_orders_tracker.is_potential_hanging_order(order):
+                        self.c_cancel_order(self._market_info, order.client_order_id)
+        if self._cancel_timestamp > self._current_timestamp:
+            return
+
         if proposal is not None and \
                 self._order_refresh_tolerance_pct >= 0:
 
@@ -1296,24 +1320,6 @@ cdef class PureMarketMakingStrategy(StrategyBase):
             if self.c_is_within_tolerance(active_buy_prices, proposal_buys) and \
                     self.c_is_within_tolerance(active_sell_prices, proposal_sells):
                 to_defer_canceling = True
-        if self.order_slot_enabled and self._cancel_order_slot_timestamp <= self._current_timestamp:
-            real_bid_order_slot = 0
-            real_ask_order_slot = 0
-            bids_df, asks_df = order_book.snapshot
-            farthest_bid_active_buy_prices = min(active_buy_prices) if active_buy_prices else -999999
-            farthest_ask_active_sell_prices = max(active_sell_prices) if active_sell_prices else 999999
-            for i in range(20):
-                bid_order_slot_price = bids_df.iloc[i]["price"]
-                if bid_order_slot_price <= farthest_bid_active_buy_prices:
-                    real_bid_order_slot = i
-                    break
-            for i in range(20):
-                ask_order_slot_price = asks_df.iloc[i]["price"]
-                if ask_order_slot_price >= farthest_ask_active_sell_prices:
-                    real_ask_order_slot = i
-                    break
-            if real_bid_order_slot >=self._max_order_slot_close or real_ask_order_slot >= self._max_order_slot_close:
-                to_defer_canceling = False
 
         if not to_defer_canceling:
             self._hanging_orders_tracker.update_strategy_orders_with_equivalent_orders()
@@ -1321,8 +1327,6 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                 # If is about to be added to hanging_orders then don't cancel
                 if not self._hanging_orders_tracker.is_potential_hanging_order(order):
                     self.c_cancel_order(self._market_info, order.client_order_id)
-        # else:
-        #     self.set_timers()
 
     # Cancel Non-Hanging, Active Orders if Spreads are below minimum_spread
     cdef c_cancel_orders_below_min_spread(self):
@@ -1344,14 +1348,14 @@ cdef class PureMarketMakingStrategy(StrategyBase):
             for order in active_orders:
                 if order.is_buy:
                     for i in range(20):
-                        bid_order_slot_price = bids_df.iloc[i]["price"]
+                        bid_order_slot_price = Decimal(str(bids_df.iloc[i]["price"]))
                         if bid_order_slot_price <= order.price and i <= self._minimum_order_slot_close and \
                                 order.age() > self._minimum_order_slot_close_stay_time:
                             self.c_cancel_order(self._market_info, order.client_order_id)
                             break
                 else:
                     for i in range(20):
-                        ask_order_slot_price = asks_df.iloc[i]["price"]
+                        ask_order_slot_price = Decimal(str(asks_df.iloc[i]["price"]))
                         if ask_order_slot_price >= order.price and i <= self._minimum_order_slot_close and \
                             order.age() > self._minimum_order_slot_close_stay_time:
                             self.c_cancel_order(self._market_info, order.client_order_id)
