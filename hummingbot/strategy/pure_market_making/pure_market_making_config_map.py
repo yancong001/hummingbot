@@ -287,6 +287,39 @@ pure_market_making_config_map = {
                   type_str="float",
                   validator=lambda v: validate_decimal(v, min_value=0, inclusive=False),
                   default=60),
+    "max_spread":
+        ConfigVar(key="max_spread",
+                  prompt="At what max spread should the bot automatically set orders? (Enter 1 for 1%) >>> ",
+                  required_if=lambda: False,
+                  type_str="decimal",
+                  default=Decimal(2),
+                  validator=lambda v: validate_decimal(v, -100, 100, True)),
+    "filled_order_delay_bid":
+        ConfigVar(key="filled_order_delay_bid",
+                  prompt="How long do you want to wait before placing the next bid order "
+                         "if your order gets filled (in seconds)? >>> ",
+                  type_str="float",
+                  validator=lambda v: validate_decimal(v, min_value=0, inclusive=False),
+                  default=60),
+    "filled_order_delay_ask":
+        ConfigVar(key="filled_order_delay_ask",
+                  prompt="How long do you want to wait before placing the next ask order "
+                         "if your order gets filled (in seconds)? >>> ",
+                  type_str="float",
+                  validator=lambda v: validate_decimal(v, min_value=0, inclusive=False),
+                  default=60),
+    "bollinger_bands_length":
+        ConfigVar(key="bollinger_bands_length",
+                  prompt="Enter amount of ticks that will be stored to estimate BollingerBands >>> ",
+                  type_str="int",
+                  validator=lambda v: validate_int(v, 1, 10000),
+                  default=30),
+    "bollinger_bands_stddev_num":
+        ConfigVar(key="bollinger_bands_stddev_num",
+                  prompt="Enter StdDev nums that will be used to caculate BollingerBands >>> ",
+                  type_str="float",
+                  validator=lambda v: validate_decimal(v, min_value=0, inclusive=False),
+                  default=2),
     "hanging_orders_enabled":
         ConfigVar(key="hanging_orders_enabled",
                   prompt="Do you want to enable hanging orders? (Yes/No) >>> ",

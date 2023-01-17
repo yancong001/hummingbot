@@ -40,6 +40,11 @@ def start(self):
             c_map.get("inventory_target_base_pct").value / Decimal('100')
         inventory_range_multiplier = c_map.get("inventory_range_multiplier").value
         filled_order_delay = c_map.get("filled_order_delay").value
+        max_spread = c_map.get("max_spread").value  / Decimal('100')
+        filled_order_delay_bid = c_map.get("filled_order_delay_bid").value
+        filled_order_delay_ask = c_map.get("filled_order_delay_ask").value
+        bollinger_bands_length = c_map.get("bollinger_bands_length").value
+        bollinger_bands_stddev_num = c_map.get("bollinger_bands_stddev_num").value
         hanging_orders_enabled = c_map.get("hanging_orders_enabled").value
         hanging_orders_cancel_pct = c_map.get("hanging_orders_cancel_pct").value / Decimal('100')
         order_optimization_enabled = c_map.get("order_optimization_enabled").value
@@ -115,6 +120,11 @@ def start(self):
             inventory_target_base_pct=inventory_target_base_pct,
             inventory_range_multiplier=inventory_range_multiplier,
             filled_order_delay=filled_order_delay,
+            max_spread=max_spread,
+            filled_order_delay_bid=filled_order_delay_bid,
+            filled_order_delay_ask=filled_order_delay_ask,
+            bollinger_bands_length=bollinger_bands_length,
+            bollinger_bands_stddev_num=bollinger_bands_stddev_num,
             hanging_orders_enabled=hanging_orders_enabled,
             order_refresh_time=order_refresh_time,
             max_order_age=max_order_age,

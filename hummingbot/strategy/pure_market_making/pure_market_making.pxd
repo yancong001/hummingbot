@@ -25,6 +25,11 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         double _max_order_age
         object _order_refresh_tolerance_pct
         double _filled_order_delay
+        object _max_spread
+        double _filled_order_delay_bid
+        double _filled_order_delay_ask
+        int _bollinger_bands_length
+        double _bollinger_bands_stddev_num
         bint _inventory_skew_enabled
         object _inventory_target_base_pct
         object _inventory_range_multiplier
@@ -47,6 +52,8 @@ cdef class PureMarketMakingStrategy(StrategyBase):
 
         double _cancel_timestamp
         double _create_timestamp
+        double _create_ask_timestamp
+        double _create_bid_timestamp
         object _limit_order_type
         bint _all_markets_ready
         int _filled_buys_balance
@@ -58,11 +65,14 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         bint _should_wait_order_cancel_confirmation
 
         object _moving_price_band
+        object _bollinger_bands
 
     cdef object c_get_mid_price(self)
     cdef object c_create_base_proposal(self)
     cdef tuple c_get_adjusted_available_balance(self, list orders)
     cdef c_apply_order_levels_modifiers(self, object proposal)
+    cdef c_apply_order_bollinger_bands_modifiers(self, object proposal)
+    cdef c_apply_max_spread_modifiers(self, object proposal)
     cdef c_apply_price_band(self, object proposal)
     cdef c_apply_ping_pong(self, object proposal)
     cdef c_apply_order_price_modifiers(self, object proposal)
@@ -81,3 +91,6 @@ cdef class PureMarketMakingStrategy(StrategyBase):
     cdef c_execute_orders_proposal(self, object proposal)
     cdef set_timers(self)
     cdef c_apply_moving_price_band(self, object proposal)
+    cdef bint c_is_algorithm_ready(self)
+    cdef c_collect_market_variables(self, double timestamp)
+
