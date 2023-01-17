@@ -148,3 +148,10 @@ should_wait_order_cancel_confirmation: True
 
 # For more detailed information, see:
 # https://docs.hummingbot.io/strategies/pure-market-making/#configuration-parameters
+
+max_spread: null
+filled_order_delay_bid: null
+filled_order_delay_ask: null
+bollinger_bands_length: null
+bollinger_bands_stddev_num: null
+

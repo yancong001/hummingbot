@@ -716,9 +716,9 @@ cdef class PureMarketMakingStrategy(StrategyBase):
 
         upper_band_spread = (upper_band - self.get_price()) / self.get_price()
         lower_band_spread = (self.get_price() - lower_band) / self.get_price()
-        lines.extend(["", f"  upper_band is {str(upper_band)}, lower_band is {str(lower_band)}"] )
-        lines.extend(["", f"  Upper_Spread is {upper_band_spread + self._ask_spread}, "
-                          f"Lower_Spread is {lower_band_spread + self._bid_spread}"] )
+        lines.extend(["", f"  upper_band is {str(upper_band):.8}, lower_band is {str(lower_band):.8}"] )
+        lines.extend(["", f"  Upper_Spread is {(upper_band_spread + self._ask_spread)*100:.8%}, "
+                          f"Lower_Spread is {(lower_band_spread + self._bid_spread)*100:.8%}"] )
 
 
         return "\n".join(lines)
@@ -923,11 +923,11 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         for buy in proposal.buys:
             if buy.price < min_bid_price:
                 buy.price = min_bid_price
-                self.logger().info(f"Adjust the bid_price {buy.price} to min_spread {min_bid_price}")
+                self.logger().info(f"Adjust the bid_price {buy.price} to min_spread {min_bid_price:.8}")
         for sell in proposal.sells:
             if sell.price > max_ask_price:
                 sell.price = max_ask_price
-                self.logger().info(f"Adjust the ask_price {sell.price} to max_spread {max_ask_price}")
+                self.logger().info(f"Adjust the ask_price {sell.price} to max_spread {max_ask_price:.8}")
 
     cdef c_apply_order_bollinger_bands_modifiers(self, proposal):
         new_sells =[]
@@ -944,9 +944,9 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                     if sell.price < new_upper_band_spread_price:
                         new_sells.append(sell)
                     else:
-                        self.logger().info(f"Sell Price {sell.price} is higher than the upper_spreads {new_upper_band_spread_price}, "
+                        self.logger().info(f"Sell Price {sell.price} is higher than the upper_spreads {new_upper_band_spread_price:.10}, "
                                            f"limit_order cannot be set."
-                                           f"BB_upper_band_spread is {upper_band_spread}."
+                                           f"BB_upper_band_spread is {upper_band_spread*100:.8%}."
                                            )
                 proposal.sells = new_sells
             if proposal.buys:
@@ -954,9 +954,9 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                     if buy.price > new_lower_band_spread_price:
                         new_buys.append(buy)
                     else:
-                        self.logger().info(f"Buy Price {sell.price} is lower than the lower_spreads {new_lower_band_spread_price}, "
+                        self.logger().info(f"Buy Price {sell.price} is lower than the lower_spreads {new_lower_band_spread_price:.10}, "
                                            f"limit_order cannot be set."
-                                           f"BB_lower_band_spread is {lower_band_spread}."
+                                           f"BB_lower_band_spread is {lower_band_spread*100:.8%}."
                                            )
                 proposal.buys = new_buys
 
