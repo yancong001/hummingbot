@@ -318,7 +318,7 @@ pure_market_making_config_map = {
         ConfigVar(key="bollinger_bands_offset",
                   prompt="Enter Offset of nums that will be adjust BollingerBands >>> ",
                   type_str="int",
-                  validator=lambda v: validate_int(v, 1, 10000),
+                  validator=lambda v: validate_int(v, -100000, 100000),
                   default=0),
     "bollinger_bands_stddev_num":
         ConfigVar(key="bollinger_bands_stddev_num",
