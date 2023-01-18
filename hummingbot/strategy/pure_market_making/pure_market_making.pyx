@@ -66,6 +66,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                     filled_order_delay_bid: float = 60.0,
                     filled_order_delay_ask: float = 60.0,
                     bollinger_bands_length: int = 30,
+                    bollinger_bands_offset: int = 0,
                     bollinger_bands_stddev_num: float = 2.0,
                     inventory_skew_enabled: bool = False,
                     inventory_target_base_pct: Decimal = s_decimal_zero,
@@ -119,6 +120,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         self._filled_order_delay_bid = filled_order_delay_bid
         self._filled_order_delay_ask = filled_order_delay_ask
         self._bollinger_bands_length = bollinger_bands_length
+        self._bollinger_bands_offset = bollinger_bands_offset
         self._bollinger_bands_stddev_num = bollinger_bands_stddev_num
         self._inventory_skew_enabled = inventory_skew_enabled
         self._inventory_target_base_pct = inventory_target_base_pct
@@ -159,7 +161,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         self._should_wait_order_cancel_confirmation = should_wait_order_cancel_confirmation
         self._moving_price_band = moving_price_band
 
-        self._bollinger_bands = BollingerBandsIndicator(sampling_length=self._bollinger_bands_length,alpha=self._bollinger_bands_stddev_num)
+        self._bollinger_bands = BollingerBandsIndicator(sampling_length=self._bollinger_bands_length,alpha=self._bollinger_bands_stddev_num,offset=self._bollinger_bands_offset)
 
         self.c_add_markets([market_info.market])
 
@@ -937,8 +939,8 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                 self.logger().info(f"Adjust the ask_price {sell.price} to max_spread {max_ask_price:.8}")
 
     cdef c_apply_order_bollinger_bands_modifiers(self, proposal):
-        new_sells =[]
-        new_buys = []
+        # new_sells =[]
+        # new_buys = []
         if proposal is not None:
             upper_band, lower_band = self.get_bollinger_bands()
             upper_band_spread = (upper_band - self.get_price())/self.get_price()
@@ -948,24 +950,25 @@ cdef class PureMarketMakingStrategy(StrategyBase):
             new_lower_band_spread_price = (1 - self._bid_spread - lower_band_spread) * self.get_price()
             if proposal.sells:
                 for sell in proposal.sells:
-                    if sell.price < new_upper_band_spread_price:
-                        new_sells.append(sell)
-                    else:
-                        self.logger().info(f"Sell Price {sell.price} is higher than the upper_spreads {new_upper_band_spread_price:.10}, "
-                                           f"limit_order cannot be set."
-                                           f"BB_upper_band_spread is {upper_band_spread*100:.16%}."
-                                           )
-                proposal.sells = new_sells
+                    sell.price = new_upper_band_spread_price
+                    # if sell.price == new_upper_band_spread_price:
+                    #     new_sells.append(sell)
+                    # else:
+                    #     self.logger().info(f"Sell Price {sell.price} is higher than the upper_spreads {new_upper_band_spread_price:.10}, "
+                    #                        f"limit_order cannot be set."
+                    #                        f"BB_upper_band_spread is {upper_band_spread*100:.16%}."
+                    #                        )
+                # proposal.sells = new_sells
             if proposal.buys:
                 for buy in proposal.buys:
-                    if buy.price > new_lower_band_spread_price:
-                        new_buys.append(buy)
-                    else:
-                        self.logger().info(f"Buy Price {sell.price} is lower than the lower_spreads {new_lower_band_spread_price:.10}, "
-                                           f"limit_order cannot be set."
-                                           f"BB_lower_band_spread is {lower_band_spread*100:.16%}."
-                                           )
-                proposal.buys = new_buys
+                    buy.price = new_lower_band_spread_price
+                    #     new_buys.append(buy)
+                    # else:
+                    #     self.logger().info(f"Buy Price {sell.price} is lower than the lower_spreads {new_lower_band_spread_price:.10}, "
+                    #                        f"limit_order cannot be set."
+                    #                        f"BB_lower_band_spread is {lower_band_spread*100:.16%}."
+                    #                        )
+                # proposal.buys = new_buys
 
     cdef c_apply_price_band(self, proposal):
         if self._price_ceiling > 0 and self.get_price() >= self._price_ceiling:

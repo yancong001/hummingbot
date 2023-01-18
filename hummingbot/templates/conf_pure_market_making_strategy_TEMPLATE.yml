@@ -153,5 +153,6 @@ max_spread: null
 filled_order_delay_bid: null
 filled_order_delay_ask: null
 bollinger_bands_length: null
+bollinger_bands_offset: null
 bollinger_bands_stddev_num: null
 

@@ -29,6 +29,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         double _filled_order_delay_bid
         double _filled_order_delay_ask
         int _bollinger_bands_length
+        int _bollinger_bands_offset
         double _bollinger_bands_stddev_num
         bint _inventory_skew_enabled
         object _inventory_target_base_pct
