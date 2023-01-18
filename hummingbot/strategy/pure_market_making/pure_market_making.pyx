@@ -818,7 +818,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         # price = self.get_price()
         price_provider = self._asset_price_delegate or self._market_info
         last_price = price_provider.get_price_by_type(PriceType.LastTrade)
-        self._bollinger_bands.add_sample(float(last_price))
+        self._bollinger_bands.add_sample(last_price)
 
     def collect_market_variables(self, timestamp: float):
         self.c_collect_market_variables(timestamp)

@@ -15,6 +15,6 @@ class BollingerBandsIndicator(BaseTrendIndicator):
         if len(data) >= 2:
             std = np.std(data, ddof=1)
             mid_band = np.mean(data)
-            upper_band = Decimal(str(mid_band)) + Decimal(str(self.alpha)) * Decimal(str(std))
-            lower_band = Decimal(str(mid_band)) - Decimal(str(self.alpha)) * Decimal(str(std))
+            upper_band = mid_band + self.alpha * std
+            lower_band = mid_band - self.alpha * std
             return upper_band, lower_band

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import numpy as np
+from decimal import Decimal
 import logging
 # from ..ring_buffer import RingBuffer
 
@@ -20,7 +21,7 @@ class BaseTrendIndicator(ABC):
         self._processing_length = processing_length
         self._processing_buffer = []
 
-    def add_sample(self, value: float):
+    def add_sample(self, value: Decimal):
         if self.is_sampling_buffer_full:
             self._sampling_buffer.pop(0)
         if self.is_processing_buffer_full:
