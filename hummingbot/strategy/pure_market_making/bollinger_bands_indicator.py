@@ -2,7 +2,7 @@
 from hummingbot.strategy.pure_market_making.base_trend_indicator import BaseTrendIndicator
 
 import numpy as np
-
+from decimal import Decimal
 
 # import pandas as pd
 
@@ -17,4 +17,4 @@ class BollingerBandsIndicator(BaseTrendIndicator):
             mid_band = np.mean(data)
             upper_band = mid_band + self.alpha * std
             lower_band = mid_band - self.alpha * std
-            return upper_band, lower_band
+            return Decimal(str(upper_band)), Decimal(str(lower_band))
