@@ -29,14 +29,7 @@ from .pure_market_making_order_tracker import PureMarketMakingOrderTracker
 from .moving_price_band import MovingPriceBand
 
 from hummingbot.strategy.pure_market_making.bollinger_bands_indicator import BollingerBandsIndicator
-from hummingbot.core.event.event_listener cimport EventListener
 
-from hummingbot.core.event.events import (
-    OrderFilledEvent,
-    OrderBookTradeEvent,
-    OrderBookEvent,
-
-)
 
 NaN = float("nan")
 s_decimal_zero = Decimal(0)
@@ -44,21 +37,11 @@ s_decimal_neg_one = Decimal(-1)
 pmm_logger = None
 
 
-cdef class OrderBookTradeListener(EventListener):
-    cdef:
-        StrategyBase _owner
-
-    def __init__(self, StrategyBase owner):
-        super().__init__()
-        self._owner = owner
-    cdef c_call(self, object arg):
-        self._owner.c_did_order_book_trade_order(arg)
 cdef class PureMarketMakingStrategy(StrategyBase):
     OPTION_LOG_CREATE_ORDER = 1 << 3
     OPTION_LOG_MAKER_ORDER_FILLED = 1 << 4
     OPTION_LOG_STATUS_REPORT = 1 << 5
     OPTION_LOG_ALL = 0x7fffffffffffffff
-    ORDER_BOOK_TRADE_EVENT_TAG = OrderBookEvent.TradeEvent
 
     @classmethod
     def logger(cls):
@@ -178,8 +161,6 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         self._should_wait_order_cancel_confirmation = should_wait_order_cancel_confirmation
         self._moving_price_band = moving_price_band
 
-        self._all_listener_ready = False
-        self._order_book_trade_listener = OrderBookTradeListener(self)
         self._bollinger_bands = BollingerBandsIndicator(sampling_length=self._bollinger_bands_length,alpha=self._bollinger_bands_stddev_num,offset=self._bollinger_bands_offset)
 
         self.c_add_markets([market_info.market])
@@ -799,22 +780,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                     self.logger().warning(f"WARNING: Some markets are not connected or are down at the moment. Market "
                                           f"making may be dangerous when markets or networks are unstable.")
 
-            if not self._all_listener_ready:
-                if not self._all_listener_ready:
-                    self._market_info.market.get_order_book(self._market_info.trading_pair).add_listener(
-                            self.ORDER_BOOK_TRADE_EVENT_TAG,
-                            self._order_book_trade_listener
-                        )
-                    # for market_pair_tuple,market_pair in self._market_pairs.items():
-                    #     market_pair_tuple[0].get_order_book(market_pair_tuple[1]).add_listener(
-                    #         self.ORDER_BOOK_TRADE_EVENT_TAG,
-                    #         self._order_book_trade_listener
-                    #     )
-                    self._all_listener_ready = True
-                else:
-                    if self.OPTION_LOG_STATUS_REPORT:
-                        self.logger().info(f"Order_book_trade_listener are ready. ")
-            # self.c_collect_market_variables(timestamp)
+            self.c_collect_market_variables(timestamp)
             if self.c_is_algorithm_ready():
                 proposal = None
                 if self._create_timestamp <= self._current_timestamp:
@@ -849,22 +815,6 @@ cdef class PureMarketMakingStrategy(StrategyBase):
 
         finally:
             self._last_timestamp = timestamp
-
-    cdef c_did_order_book_trade_order(self, object order_book_trade_event):
-
-        # cdef:
-        #     object orderbook_price = order_book_trade_event.price
-        #     object orderbook_amount = order_book_trade_event.amount
-        #     object orderbook_type = order_book_trade_event.type
-        #     object market_pair = self._market_info.trading_pair
-            # object exchange = self._market_pair_tracker.c_get_exchange_from_order_id(order_id)
-            # tuple order_book_trade_event
-
-        # orderbook_price = order_book_trade_event.price
-        # self._last_trade_price = order_book_trade_event.price
-        self._bollinger_bands.add_sample(order_book_trade_event)
-
-        # orderbook_amount = order_book_trade_event.amount
 
     cdef c_collect_market_variables(self, double timestamp):
         # price = self.get_price()

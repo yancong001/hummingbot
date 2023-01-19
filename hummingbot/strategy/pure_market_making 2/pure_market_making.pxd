@@ -3,7 +3,6 @@
 from libc.stdint cimport int64_t
 
 from hummingbot.strategy.strategy_base cimport StrategyBase
-from hummingbot.core.event.event_listener cimport EventListener
 
 
 cdef class PureMarketMakingStrategy(StrategyBase):
@@ -65,9 +64,8 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         int64_t _logging_options
         object _last_own_trade_price
         bint _should_wait_order_cancel_confirmation
+
         object _moving_price_band
-        bint _all_listener_ready
-        EventListener _order_book_trade_listener
         object _bollinger_bands
 
     cdef object c_get_mid_price(self)
