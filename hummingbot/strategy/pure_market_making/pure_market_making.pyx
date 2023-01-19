@@ -850,7 +850,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         finally:
             self._last_timestamp = timestamp
 
-    cdef c_did_order_book_trade_order(self, object order_book_trade_event):
+    def c_did_order_book_trade_order(self, object order_book_trade_event):
 
         # cdef:
         #     object orderbook_price = order_book_trade_event.price
