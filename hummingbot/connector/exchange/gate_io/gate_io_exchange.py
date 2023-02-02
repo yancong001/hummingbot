@@ -188,6 +188,7 @@ class GateIoExchange(ExchangePyBase):
             "type": order_type_str,
             "price": f"{price:f}",
             "amount": f"{amount:f}",
+            "time_in_force": "poc"
         }
         # RESTRequest does not support json, and if we pass a dict
         # the underlying aiohttp will encode it to params

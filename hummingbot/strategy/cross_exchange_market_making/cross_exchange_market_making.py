@@ -1322,6 +1322,7 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
         size /= base_rate
 
         top_bid_price, top_ask_price = self.get_top_bid_ask_from_price_samples(market_pair)
+        current_top_bid_price, current_top_ask_price = self.get_top_bid_ask(market_pair)
 
         if is_bid:
             # Maker buy
@@ -1361,7 +1362,7 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
             if self.adjust_order_enabled:
                 # If maker bid order book is not empty
                 if not Decimal.is_nan(price_above_bid):
-                    maker_price = min(maker_price, price_above_bid)
+                    maker_price = min(maker_price, price_above_bid,current_top_bid_price)
 
             price_quantum = maker_market.get_order_price_quantum(
                 market_pair.maker.trading_pair,
@@ -1406,7 +1407,7 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
             if self.adjust_order_enabled:
                 # If maker ask order book is not empty
                 if not Decimal.is_nan(next_price_below_top_ask):
-                    maker_price = max(maker_price, next_price_below_top_ask)
+                    maker_price = max(maker_price, next_price_below_top_ask,current_top_ask_price)
 
             price_quantum = maker_market.get_order_price_quantum(
                 market_pair.maker.trading_pair,
