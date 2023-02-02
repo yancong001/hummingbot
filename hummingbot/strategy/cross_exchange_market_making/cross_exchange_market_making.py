@@ -23,6 +23,7 @@ from hummingbot.core.event.events import (
     OrderExpiredEvent,
     OrderFilledEvent,
     SellOrderCompletedEvent,
+    # OrderBookEvent,
 )
 from hummingbot.core.network_iterator import NetworkStatus
 from hummingbot.core.utils.async_utils import safe_ensure_future
@@ -35,6 +36,7 @@ from hummingbot.strategy.market_trading_pair_tuple import MarketTradingPairTuple
 from hummingbot.strategy.strategy_py_base import StrategyPyBase
 
 from .order_id_market_pair_tracker import OrderIDMarketPairTracker
+from hummingbot.core.event.event_listener import EventListener
 
 s_float_nan = float("nan")
 s_decimal_zero = Decimal(0)
@@ -51,6 +53,14 @@ class LogOption(Enum):
     STATUS_REPORT = 5
     MAKER_ORDER_HEDGED = 6
 
+
+# # 存在小额无法对冲的问题
+# class OrderBookTradeListener(EventListener):
+#     def __init__(self, owner):
+#         super().__init__()
+#         self._owner = owner
+#     def c_call(self, arg):
+#         self._owner.did_order_book_trade_order(arg)
 
 class CrossExchangeMarketMakingStrategy(StrategyPyBase):
 
@@ -69,6 +79,8 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
 
     SHADOW_MAKER_ORDER_KEEP_ALIVE_DURATION = 60.0 * 15
     CANCEL_EXPIRY_DURATION = 60.0
+    # ORDER_BOOK_TRADE_EVENT_TAG = OrderBookEvent.TradeEvent
+
 
     @classmethod
     def logger(cls):
@@ -100,6 +112,8 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
         self._maker_markets = set([market_pair.maker.market for market_pair in market_pairs])
         self._taker_markets = set([market_pair.taker.market for market_pair in market_pairs])
         self._all_markets_ready = False
+        # self._order_book_trade_listener = OrderBookTradeListener(self)
+
         self._conversions_ready = False
 
         self._anti_hysteresis_timers = {}
@@ -135,6 +149,7 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
         self._maker_to_hedging_trades = {}
 
         all_markets = list(self._maker_markets | self._taker_markets)
+        # self._all_listener_ready = False
 
         self.add_markets(all_markets)
 
@@ -412,9 +427,23 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
                 self.logger().warning("WARNING: Some markets are not connected or are down at the moment. Market "
                                       "making may be dangerous when markets or networks are unstable.")
 
+        # # 这里监听 maker 市场 symbol 的 orderbook
+        # if not self._all_listener_ready:
+        #     if not self._all_listener_ready:
+        #         for market_pair_tuple, market_pair in self._market_pairs.items():
+        #             market_pair_tuple[0].get_order_book(market_pair_tuple[1]).add_listener(
+        #                 self.ORDER_BOOK_TRADE_EVENT_TAG,
+        #                 self._order_book_trade_listener
+        #             )
+        #         self._all_listener_ready = True
+        #     else:
+        #         if LogOption.STATUS_REPORT:
+        #             self.logger().info(f"Order_book_trade_listener are ready. ")
+
+
         if self._gateway_quotes_task is None or self._gateway_quotes_task.done():
             self._gateway_quotes_task = safe_ensure_future(self.get_gateway_quotes())
-
+        # todo 需要吗？
         if self.ready_for_new_trades():
             if self._main_task is None or self._main_task.done():
                 self._main_task = safe_ensure_future(self.main(timestamp))
@@ -434,21 +463,30 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
                                         f"The in-flight maker order in for the trading pair '{limit_order.trading_pair}' "
                                         f"does not correspond to any whitelisted trading pairs. Skipping.")
                     continue
-
-                if not self._sb_order_tracker.has_in_flight_cancel(limit_order.client_order_id) and \
-                        limit_order.client_order_id in self._maker_to_taker_order_ids.keys():
-                    market_pair_to_active_orders[market_pair].append(limit_order)
-
+                # 下面的判断多此一举，limit_order 属于active_limit_orders,has_in_flight_cancel一定为false
+                # # limit_order必在_maker_order_ids里，
+                # if not self._sb_order_tracker.has_in_flight_cancel(limit_order.client_order_id) and \
+                #         limit_order.client_order_id in self._maker_to_taker_order_ids.keys():
+                #     market_pair_to_active_orders[market_pair].append(limit_order)
+                market_pair_to_active_orders[market_pair].append(limit_order)
+            if self.position_risk_control():
+                return
+            #可以加上波动率
+            # if not self.is_algorithm_ready():
+            #     return
             # Process each market pair independently.
             for market_pair in self._market_pairs.values():
                 await self.process_market_pair(timestamp, market_pair, market_pair_to_active_orders[market_pair])
 
             # log conversion rates every 5 minutes
-            if self._last_conv_rates_logged + (60. * 5) < timestamp:
-                self.log_conversion_rates()
-                self._last_conv_rates_logged = timestamp
+            # if self._last_conv_rates_logged + (60. * 5) < timestamp:
+            #     self.log_conversion_rates()
+            #     self._last_conv_rates_logged = timestamp
         finally:
             self._last_timestamp = timestamp
+    # todo
+    def position_risk_control(self):
+        return False
 
     async def get_gateway_quotes(self):
         for market_pair in self._market_pairs.values():
@@ -467,7 +505,7 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
                     order_amount
                 )
                 self._last_taker_sell_price = order_price
-
+    # todo
     def ready_for_new_trades(self) -> bool:
         """
         Returns True if there is no outstanding unfilled order.
@@ -485,14 +523,14 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
             if self.is_gateway_market(market_pair.taker):
                 gateway_connectors.append(cast(GatewayEVMAMM, market_pair.taker.market))
 
-    def has_active_taker_order(self, market_pair: MarketTradingPairTuple):
-        # Market orders are not being submitted as taker orders, limit orders are preferred at all times
-        limit_orders = self._sb_order_tracker.get_limit_orders()
-        limit_orders = limit_orders.get(market_pair, {})
-        if len(limit_orders) > 0:
-            if len(set(limit_orders.keys()).intersection(set(self._taker_to_maker_order_ids.keys()))) > 0:
-                return True
-        return False
+    # def has_active_taker_order(self, market_pair: MarketTradingPairTuple):
+    #     # Market orders are not being submitted as taker orders, limit orders are preferred at all times
+    #     limit_orders = self._sb_order_tracker.get_limit_orders()
+    #     limit_orders = limit_orders.get(market_pair, {})
+    #     if len(limit_orders) > 0:
+    #         if len(set(limit_orders.keys()).intersection(set(self._taker_to_maker_order_ids.keys()))) > 0:
+    #             return True
+    #     return False
 
     async def process_market_pair(self, timestamp: float, market_pair: MarketTradingPairTuple, active_orders: List):
         """
@@ -540,6 +578,9 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
             )
 
             # See if it's still profitable to keep the order on maker market. If not, remove it.
+            # 它允许策略在例如市场价格发生显着变化时快速响应, active_order_canceling 为True时使用 _min_profitability。
+            # active_order_canceling 为False时，使用_cancel_order_threshold 来进行撤单
+            # 优化的时候把 active_order_canceling 这个功能删掉
             if not await self.check_if_still_profitable(market_pair, active_order, current_hedging_price):
                 continue
 
@@ -568,8 +609,9 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
             return
 
         # If there are pending taker orders, wait for them to complete
-        if self.has_active_taker_order(market_pair):
-            return
+        # 检查有无市价单存在，检查有无市价单存在，有一个则返回True，taker 单和 maker 单可能都吃了一部分
+        # if self.has_active_taker_order(market_pair):
+        #     return
 
         # See if it's profitable to place a limit order on maker market.
         await self.check_and_create_new_orders(market_pair, has_active_bid, has_active_ask)
@@ -627,7 +669,7 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
             if not task.done():
                 hedge_maker_order_tasks += [task]
         self._hedge_maker_order_tasks = hedge_maker_order_tasks
-
+    # 这里有点没看明白
     def handle_unfilled_taker_order(self, order_event):
         order_id = order_event.order_id
         market_pair = self._market_pair_tracker.get_market_pair_from_order_id(order_id)
@@ -640,6 +682,84 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
 
         # Remove the cancelled, failed or expired taker order
         del self._taker_to_maker_order_ids[order_event.order_id]
+
+    # def did_order_book_trade_order(self, order_book_trade_event):
+    #     orderbook_price = order_book_trade_event.price
+    #     orderbook_amount = order_book_trade_event.amount
+    #     orderbook_type = order_book_trade_event.type
+    #     market_pair = list(self._market_pairs.values())[0]
+    #     active_maker_limit_orders = self.active_maker_limit_orders
+    #
+    #     orderbook_price = order_book_trade_event.price
+    #     # self._last_trade_price = order_book_trade_event.price
+    #     if not self._use_ticker_listener:
+    #         return None
+    #     try:
+    #         for maker_market, limit_order, order_id in active_maker_limit_orders:
+    #             order_price = limit_order.price
+    #             hedge_amount = Decimal(str(limit_order.unfilled_amount))
+    #             is_buy = limit_order.is_buy
+    #             if limit_order.is_buy:
+    #                 if order_book_trade_event.price < limit_order.price and hedge_amount > Decimal('0'):
+    #                     # 执行对冲市价卖单
+    #                     # 存在的问题：价格到了但没打穿，可能会造成 taker触发。
+    #                     self._sb_order_tracker.c_get_limit_order(market_pair.maker,
+    #                                                              limit_order.client_order_id).unfilled_amount = Decimal('0')
+    #                     self.c_place_order(market_pair, False, False, hedge_amount, s_decimal_nan)
+    #                     # self._opening_position_num += 1
+    #                     if self._logging_options & self.OPTION_LOG_MAKER_ORDER_HEDGED:
+    #                         self.log_with_clock(
+    #                             logging.INFO,
+    #                             f"###### ({order_book_trade_event.price}) Ticker trade price "
+    #                             f"({market_pair.maker.trading_pair}) Hedged maker buy order(s) of "
+    #                             f"{hedge_amount} {market_pair.maker.base_asset} on taker market to lock in profits. "
+    #                         )
+    #             else:
+    #                 if order_book_trade_event.price > limit_order.price and hedge_amount > Decimal('0'):
+    #                     self._sb_order_tracker.c_get_limit_order(market_pair.maker,
+    #                                                              limit_order.client_order_id).unfilled_amount = Decimal('0')
+    #                     self.c_place_order(market_pair, True, False, hedge_amount, s_decimal_nan)
+    #                     # self._opening_position_num -= 1
+    #                     if self._logging_options & self.OPTION_LOG_MAKER_ORDER_HEDGED:
+    #                         self.log_with_clock(
+    #                             logging.INFO,
+    #                             f"###### ({order_book_trade_event.price}) Ticker trade price "
+    #                             f"({market_pair.maker.trading_pair}) Hedged maker sell order(s) of "
+    #                             f"{hedge_amount} {market_pair.maker.base_asset} on taker market to lock in profits. "
+    #                         )
+    #         # if order_book_trade_event.price <= self._limit_buy_price and self._hedge_sell_switch:
+    #         #     #执行对冲市价卖单
+    #         #     #存在的问题：价格到了但没打穿，可能会造成 taker触发。
+    #         #     self.log_with_clock(
+    #         #         logging.INFO,
+    #         #         f"$$$$$ TEST_order_book_trade_event ,time: {datetime.datetime.utcnow()} "
+    #         #     )
+    #         #
+    #         #     self._hedge_sell_switch =False
+    #         #     self.c_place_order(market_pair, False, False, self._order_amount, s_decimal_nan)
+    #         #     self._opening_position_num +=1
+    #         #
+    #         #     if self._logging_options & self.OPTION_LOG_MAKER_ORDER_HEDGED:
+    #         #         self.log_with_clock(
+    #         #             logging.INFO,
+    #         #             f"({order_book_trade_event.price}) Ticker trade price "
+    #         #             f"({market_pair.maker.trading_pair}) Hedged maker buy order(s) of "
+    #         #             f"{self._order_amount} {market_pair.maker.base_asset} on taker market to lock in profits. "
+    #         #         )
+    #         # elif order_book_trade_event.price >= self._limit_sell_price and self._hedge_buy_switch:
+    #         #     #执行对冲市价买单
+    #         #     self._hedge_buy_switch = False
+    #         #     self.c_place_order(market_pair, True, False, self._order_amount, s_decimal_nan)
+    #         #     self._opening_position_num -=1
+    #         #     if self._logging_options & self.OPTION_LOG_MAKER_ORDER_HEDGED:
+    #         #         self.log_with_clock(
+    #         #             logging.INFO,
+    #         #             f"({order_book_trade_event.price}) Ticker trade price "
+    #         #             f"({market_pair.maker.trading_pair}) Hedged maker sell order(s) of "
+    #         #             f"{self._order_amount} {market_pair.maker.base_asset} on taker market to lock in profits. "
+    #         #         )
+    #     except Exception:
+    #         self.log_with_clock(logging.ERROR, "Unexpected error.", exc_info=True)
 
     def did_fill_order(self, order_filled_event: OrderFilledEvent):
         order_id = order_filled_event.order_id
@@ -890,12 +1010,12 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
             maker_order_ids = [r.order_id for _, r in buy_fill_records]
             maker_exchange_trade_ids = [r.exchange_trade_id for _, r in buy_fill_records]
 
-            if len(maker_order_ids) != 1 or len(maker_exchange_trade_ids) != 1:
-                self.logger().error("Multiple buy maker orders fills")
-                return
+            # if len(maker_order_ids) != 1 or len(maker_exchange_trade_ids) != 1:
+            #     self.logger().error("Multiple buy maker orders fills")
+            #     return
 
-            maker_order_id = maker_order_ids[0]
-            maker_exchange_trade_id = maker_exchange_trade_ids[0]
+            maker_order_id = maker_order_ids[-1]
+            maker_exchange_trade_id = maker_exchange_trade_ids[-1]
 
             if self.is_gateway_market(market_pair.taker):
                 order_price = await market_pair.taker.market.get_order_price(
@@ -936,6 +1056,7 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
                         f"(maker avg price={avg_fill_price}, taker top={taker_top})"
                     )
             else:
+                del self._ongoing_hedging[maker_exchange_trade_id]
                 self.log_with_clock(
                     logging.INFO,
                     f"({market_pair.maker.trading_pair}) Current maker buy fill amount of "
@@ -979,13 +1100,15 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
 
             maker_order_ids = [r.order_id for _, r in sell_fill_records]
             maker_exchange_trade_ids = [r.exchange_trade_id for _, r in sell_fill_records]
+            # 2个方案，第一个是 汇总多笔 trade ，发出去。但是汇总多少笔是个问题。可以看价格是否被打穿，打穿的话  quantized_hedge_amount就是amount
+            # 判断是否打穿可以用 get_price或者order_book_trade 来判断
+            # 第二个方案：汇总多笔 trade，到下个tick 来判断，并对冲，这个弊端是 对冲价格可能并不理想。
+            # if len(maker_order_ids) != 1 or len(maker_exchange_trade_ids) != 1:
+            #     self.logger().error("Multiple sell maker orders fills")
+            #     return
 
-            if len(maker_order_ids) != 1 or len(maker_exchange_trade_ids) != 1:
-                self.logger().error("Multiple sell maker orders fills")
-                return
-
-            maker_order_id = maker_order_ids[0]
-            maker_exchange_trade_id = maker_exchange_trade_ids[0]
+            maker_order_id = maker_order_ids[-1]
+            maker_exchange_trade_id = maker_exchange_trade_ids[-1]
 
             if self.is_gateway_market(market_pair.taker):
                 order_price = await market_pair.taker.market.get_order_price(
@@ -1026,6 +1149,7 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
                         f"(maker avg price={avg_fill_price}, taker top={taker_top})"
                     )
             else:
+                del self._ongoing_hedging[maker_exchange_trade_id]
                 self.log_with_clock(
                     logging.INFO,
                     f"({market_pair.maker.trading_pair}) Current maker sell fill amount of "

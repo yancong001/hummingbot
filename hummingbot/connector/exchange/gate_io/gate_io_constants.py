@@ -7,9 +7,10 @@ HBOT_BROKER_ID = "hummingbot"
 HBOT_ORDER_ID = "t-HBOT"
 MAX_ID_LEN = 30
 
-REST_URL = "https://api.gateio.ws/api/v4"
+# REST_URL = "https://api.gateio.ws/api/v4"
+REST_URL = "https://apiv4-private.gateapi.io/api/v4"
 REST_URL_AUTH = "/api/v4"
-WS_URL = "wss://api.gateio.ws/ws/v4/"
+WS_URL = "wss://spotws-private.gateapi.io/ws/v4/"
 NETWORK_CHECK_PATH_URL = "spot/currencies/BTC"
 SYMBOL_PATH_URL = "spot/currency_pairs"
 ORDER_CREATE_PATH_URL = "spot/orders"

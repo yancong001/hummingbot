@@ -81,6 +81,8 @@ cdef class LimitOrder:
                                               <PyObject *> filled_quantity,
                                               creation_timestamp,
                                               status.value)
+        self._unfilled_amount = quantity
+
 
     @property
     def client_order_id(self) -> str:
@@ -95,6 +97,14 @@ cdef class LimitOrder:
             string cpp_trading_pair = self._cpp_limit_order.getTradingPair()
             str retval = cpp_trading_pair.decode("utf8")
         return retval
+
+    @property
+    def unfilled_amount(self) -> Decimal:
+        return self._unfilled_amount
+
+    @unfilled_amount.setter
+    def unfilled_amount(self, object unfilled_amount):
+        self._unfilled_amount = unfilled_amount
 
     @property
     def is_buy(self) -> bool:

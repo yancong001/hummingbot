@@ -6,6 +6,9 @@ from .LimitOrder cimport LimitOrder as CPPLimitOrder
 cdef class LimitOrder:
     cdef:
         CPPLimitOrder _cpp_limit_order
+        double _unfilled_amount
+
+
     cdef long long c_age(self)
     cdef long long c_age_til(self, long long start_timestamp)
 
