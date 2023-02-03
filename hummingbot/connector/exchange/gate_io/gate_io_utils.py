@@ -9,8 +9,8 @@ from hummingbot.core.data_type.trade_fee import TradeFeeSchema
 CENTRALIZED = True
 EXAMPLE_PAIR = "BTC-USDT"
 DEFAULT_FEES = TradeFeeSchema(
-    maker_percent_fee_decimal=Decimal("0.002"),
-    taker_percent_fee_decimal=Decimal("0.002"),
+    maker_percent_fee_decimal=Decimal("-0.000025"),
+    taker_percent_fee_decimal=Decimal("0.00037"),
 )
 
 

@@ -127,7 +127,6 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
 
         # Holds ongoing hedging orders mapped to their respective maker fill trades
         self._ongoing_hedging = bidict()
-        self._unhedged_to_go_hedge = bidict()
 
         self._logging_options = logging_options
 
