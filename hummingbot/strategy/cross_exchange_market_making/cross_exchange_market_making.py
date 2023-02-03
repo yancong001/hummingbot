@@ -127,6 +127,7 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
 
         # Holds ongoing hedging orders mapped to their respective maker fill trades
         self._ongoing_hedging = bidict()
+        self._unhedged_to_go_hedge = bidict()
 
         self._logging_options = logging_options
 
@@ -444,9 +445,11 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
         if self._gateway_quotes_task is None or self._gateway_quotes_task.done():
             self._gateway_quotes_task = safe_ensure_future(self.get_gateway_quotes())
         # todo 需要吗？
-        if self.ready_for_new_trades():
-            if self._main_task is None or self._main_task.done():
-                self._main_task = safe_ensure_future(self.main(timestamp))
+        # if self.ready_for_new_trades():
+        #     if self._main_task is None or self._main_task.done():
+        #         self._main_task = safe_ensu
+        if self._main_task is None or self._main_task.done():
+            self._main_task = safe_ensure_future(self.main(timestamp))
 
         if self._cancel_outdated_orders_task is None or self._cancel_outdated_orders_task.done():
             self._cancel_outdated_orders_task = safe_ensure_future(self.apply_gateway_transaction_cancel_interval())
@@ -845,6 +848,14 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
 
                 try:
                     maker_exchange_trade_id = self._ongoing_hedging.inverse[order_id]
+                    for order_fill_record in self._order_fill_sell_events[market_pair]:
+                        _, order_filled_event = order_fill_record
+                        _cumulated_exchange_trade_id = order_filled_event.exchange_trade_id
+                        if _cumulated_exchange_trade_id == maker_exchange_trade_id:
+                            break
+                        if _cumulated_exchange_trade_id in self._ongoing_hedging.keys():
+                            del self._ongoing_hedging[_cumulated_exchange_trade_id]
+
                     del self._ongoing_hedging[maker_exchange_trade_id]
                 except KeyError:
                     self.logger().warning(f"Ongoing hedging not found for order id {order_id}")
@@ -1149,7 +1160,6 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
                         f"(maker avg price={avg_fill_price}, taker top={taker_top})"
                     )
             else:
-                del self._ongoing_hedging[maker_exchange_trade_id]
                 self.log_with_clock(
                     logging.INFO,
                     f"({market_pair.maker.trading_pair}) Current maker sell fill amount of "
