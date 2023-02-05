@@ -1066,7 +1066,6 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
                         f"(maker avg price={avg_fill_price}, taker top={taker_top})"
                     )
             else:
-                del self._ongoing_hedging[maker_exchange_trade_id]
                 self.log_with_clock(
                     logging.INFO,
                     f"({market_pair.maker.trading_pair}) Current maker buy fill amount of "
