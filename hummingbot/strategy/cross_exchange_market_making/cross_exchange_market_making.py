@@ -847,13 +847,6 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
 
                 try:
                     maker_exchange_trade_id = self._ongoing_hedging.inverse[order_id]
-                    for order_fill_record in self._order_fill_sell_events[market_pair]:
-                        _, order_filled_event = order_fill_record
-                        _cumulated_exchange_trade_id = order_filled_event.exchange_trade_id
-                        if _cumulated_exchange_trade_id == maker_exchange_trade_id:
-                            break
-                        if _cumulated_exchange_trade_id in self._ongoing_hedging.keys():
-                            del self._ongoing_hedging[_cumulated_exchange_trade_id]
 
                     del self._ongoing_hedging[maker_exchange_trade_id]
                 except KeyError:
@@ -1013,6 +1006,8 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
                 self.order_size_taker_balance_factor
             )
             quantized_hedge_amount = taker_market.quantize_order_amount(taker_trading_pair, Decimal(hedged_order_quantity))
+            self.log_with_clock(logging.INFO, f"buy_fill_quantity, hedged_order_quantity, quantized_hedge_amount分别是: {(buy_fill_quantity,hedged_order_quantity,quantized_hedge_amount)}")
+            self.log_with_clock(logging.INFO, f"buy_fill_records, {buy_fill_records}")
 
             avg_fill_price = (sum([r.price * r.amount for _, r in buy_fill_records]) /
                               sum([r.amount for _, r in buy_fill_records]))
@@ -1103,6 +1098,8 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
                 taker_trading_pair,
                 Decimal(hedged_order_quantity)
             )
+            self.log_with_clock(logging.INFO, f"sell_fill_quantity, hedged_order_quantity, quantized_hedge_amount分别是: {(sell_fill_quantity,hedged_order_quantity,quantized_hedge_amount)}")
+            self.log_with_clock(logging.INFO, f"sell_fill_records, {sell_fill_records}")
 
             avg_fill_price = (sum([r.price * r.amount for _, r in sell_fill_records]) /
                               sum([r.amount for _, r in sell_fill_records]))
@@ -1900,6 +1897,14 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
             self._taker_to_maker_order_ids[order_id] = maker_order_id
             self._maker_to_taker_order_ids[maker_order_id] += [order_id]
             self._ongoing_hedging[maker_exchange_trade_id] = order_id
+            order_fill_events = self._order_fill_buy_events if is_buy else self._order_fill_sell_events
+            for order_fill_record in order_fill_events[market_pair]:
+                _, order_filled_event = order_fill_record
+                _cumulated_exchange_trade_id = order_filled_event.exchange_trade_id
+                if _cumulated_exchange_trade_id == maker_exchange_trade_id:
+                    break
+                if _cumulated_exchange_trade_id in self._ongoing_hedging.keys():
+                    del self._ongoing_hedging[_cumulated_exchange_trade_id]
         return order_id
 
     def cancel_maker_order(self, market_pair: MakerTakerMarketPair, order_id: str):
