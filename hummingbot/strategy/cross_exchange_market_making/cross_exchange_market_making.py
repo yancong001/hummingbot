@@ -1897,7 +1897,7 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
             self._taker_to_maker_order_ids[order_id] = maker_order_id
             self._maker_to_taker_order_ids[maker_order_id] += [order_id]
             self._ongoing_hedging[maker_exchange_trade_id] = order_id
-            order_fill_events = self._order_fill_buy_events if is_buy else self._order_fill_sell_events
+            order_fill_events = self._order_fill_sell_events if is_buy else self._order_fill_buy_events
             for order_fill_record in order_fill_events[market_pair]:
                 _, order_filled_event = order_fill_record
                 _cumulated_exchange_trade_id = order_filled_event.exchange_trade_id
