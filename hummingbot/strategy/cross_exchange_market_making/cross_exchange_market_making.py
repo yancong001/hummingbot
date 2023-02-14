@@ -447,6 +447,8 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
         # if self.ready_for_new_trades():
         #     if self._main_task is None or self._main_task.done():
         #         self._main_task = safe_ensu
+
+        # self.collect_market_variables()
         if self._main_task is None or self._main_task.done():
             self._main_task = safe_ensure_future(self.main(timestamp))
 
@@ -627,6 +629,7 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
         market_pair = self._market_pair_tracker.get_market_pair_from_order_id(order_id)
 
         # Make sure to only hedge limit orders.
+        # 这个感觉有点多此一举了，在 did_fill_order里，order_id 已经确保在 self._maker_to_taker_order_ids里了
         if market_pair is not None and order_id not in self._taker_to_maker_order_ids.keys():
             limit_order_record = self._sb_order_tracker.get_shadow_limit_order(order_id)
             order_fill_record = (limit_order_record, order_filled_event)
@@ -685,6 +688,8 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
         # Remove the cancelled, failed or expired taker order
         del self._taker_to_maker_order_ids[order_event.order_id]
 
+    def collect_market_variables(self):
+        pass
     # def did_order_book_trade_order(self, order_book_trade_event):
     #     orderbook_price = order_book_trade_event.price
     #     orderbook_amount = order_book_trade_event.amount
@@ -775,7 +780,7 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
                 # This maker fill has not been processed yet, submit Taker hedge order
                 # Values have to be unique in a bidict
                 self._ongoing_hedging[order_filled_event.exchange_trade_id] = order_filled_event.exchange_trade_id
-
+                # 这个的功能只是存一下 exchange_trade_id，确保 exchange_trade_id 不重复。
                 self._maker_to_hedging_trades[order_id] += [exchange_trade_id]
 
                 self.hedge_tasks_cleanup()
@@ -828,8 +833,8 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
                     f"({order_completed_event.base_asset_amount} {order_completed_event.base_asset} has been completely filled."
                 )
                 self.notify_hb_app_with_timestamp(
-                    f"Taker BUY order ({order_completed_event.base_asset_amount} {order_completed_event.base_asset} "
-                    f"{order_completed_event.quote_asset}) is filled."
+                    f"Taker buy order {order_completed_event.quote_asset_amount / order_completed_event.base_asset_amount} {order_completed_event.base_asset} "
+                    f"{order_completed_event.quote_asset_amount} {order_completed_event.quote_asset} is filled. \n"
                 )
                 maker_order_id = self._taker_to_maker_order_ids[order_id]
                 # Remove the completed taker order
@@ -897,8 +902,8 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
                     f"has been completely filled."
                 )
                 self.notify_hb_app_with_timestamp(
-                    f"Taker SELL order ({order_completed_event.base_asset_amount} {order_completed_event.base_asset} "
-                    f"{order_completed_event.quote_asset}) is filled."
+                    f"Taker sell order {order_completed_event.quote_asset_amount / order_completed_event.base_asset_amount} {order_completed_event.base_asset} "
+                    f"{order_completed_event.quote_asset_amount} {order_completed_event.quote_asset} is filled.\n"
                 )
                 maker_order_id = self._taker_to_maker_order_ids[order_id]
                 # Remove the completed taker order
@@ -1043,6 +1048,14 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
             self.log_with_clock(logging.INFO, f"Slippage buffer adjusted order_price: {order_price}")
 
             if quantized_hedge_amount > s_decimal_zero:
+                order_fill_events = self._order_fill_buy_events
+                for order_fill_record in order_fill_events[market_pair]:
+                    _, order_filled_event = order_fill_record
+                    _cumulated_exchange_trade_id = order_filled_event.exchange_trade_id
+                    if _cumulated_exchange_trade_id == maker_exchange_trade_id:
+                        break
+                    if _cumulated_exchange_trade_id in self._ongoing_hedging.keys():
+                        del self._ongoing_hedging[_cumulated_exchange_trade_id]
                 self.place_order(
                     market_pair,
                     False,
@@ -1137,6 +1150,14 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
             self.log_with_clock(logging.INFO, f"Slippage buffer adjusted order_price: {order_price}")
 
             if quantized_hedge_amount > s_decimal_zero:
+                order_fill_events = self._order_fill_sell_events
+                for order_fill_record in order_fill_events[market_pair]:
+                    _, order_filled_event = order_fill_record
+                    _cumulated_exchange_trade_id = order_filled_event.exchange_trade_id
+                    if _cumulated_exchange_trade_id == maker_exchange_trade_id:
+                        break
+                    if _cumulated_exchange_trade_id in self._ongoing_hedging.keys():
+                        del self._ongoing_hedging[_cumulated_exchange_trade_id]
                 self.place_order(
                     market_pair,
                     True,
@@ -1897,14 +1918,6 @@ class CrossExchangeMarketMakingStrategy(StrategyPyBase):
             self._taker_to_maker_order_ids[order_id] = maker_order_id
             self._maker_to_taker_order_ids[maker_order_id] += [order_id]
             self._ongoing_hedging[maker_exchange_trade_id] = order_id
-            order_fill_events = self._order_fill_sell_events if is_buy else self._order_fill_buy_events
-            for order_fill_record in order_fill_events[market_pair]:
-                _, order_filled_event = order_fill_record
-                _cumulated_exchange_trade_id = order_filled_event.exchange_trade_id
-                if _cumulated_exchange_trade_id == maker_exchange_trade_id:
-                    break
-                if _cumulated_exchange_trade_id in self._ongoing_hedging.keys():
-                    del self._ongoing_hedging[_cumulated_exchange_trade_id]
         return order_id
 
     def cancel_maker_order(self, market_pair: MakerTakerMarketPair, order_id: str):

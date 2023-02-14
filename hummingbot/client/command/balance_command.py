@@ -133,6 +133,8 @@ class BalanceCommand:
                 # the exchange is CEX. Only show balance if non-zero.
                 if bal == Decimal(0):
                     continue
+                # BUSD (19.862 - (19.862+24.606)) / 19.862 = -124%
+                # USDT (24.606 - (19.862+24.606)) / 24.606 = -81%
                 allocated = f"{(bal - avai) / bal:.0%}"
 
             rate = await RateOracle.get_instance().get_rate(base_token=token)
