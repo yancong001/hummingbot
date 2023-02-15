@@ -82,9 +82,13 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                     max_spread: Decimal = Decimal(2),
                     filled_order_delay_bid: float = 60.0,
                     filled_order_delay_ask: float = 60.0,
-                    bollinger_bands_length: int = 30,
+
+                    bollinger_bands_upper_length: int = 30,
+                    bollinger_bands_lower_length: int = 30,
                     bollinger_bands_offset: int = 0,
-                    bollinger_bands_stddev_num: float = 2.0,
+                    bollinger_bands_upper_stddev_num: float = 2.0,
+                    bollinger_bands_lower_stddev_num: float = 2.0,
+
                     inventory_skew_enabled: bool = False,
                     inventory_target_base_pct: Decimal = s_decimal_zero,
                     inventory_range_multiplier: Decimal = s_decimal_zero,
@@ -136,9 +140,11 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         self._max_spread = max_spread
         self._filled_order_delay_bid = filled_order_delay_bid
         self._filled_order_delay_ask = filled_order_delay_ask
-        self._bollinger_bands_length = bollinger_bands_length
+        self._bollinger_bands_upper_length = bollinger_bands_upper_length
+        self._bollinger_bands_lower_length = bollinger_bands_lower_length
         self._bollinger_bands_offset = bollinger_bands_offset
-        self._bollinger_bands_stddev_num = bollinger_bands_stddev_num
+        self._bollinger_bands_upper_stddev_num = bollinger_bands_upper_stddev_num
+        self._bollinger_bands_lower_stddev_num = bollinger_bands_lower_stddev_num
         self._inventory_skew_enabled = inventory_skew_enabled
         self._inventory_target_base_pct = inventory_target_base_pct
         self._inventory_range_multiplier = inventory_range_multiplier
@@ -180,7 +186,9 @@ cdef class PureMarketMakingStrategy(StrategyBase):
 
         self._all_listener_ready = False
         self._order_book_trade_listener = OrderBookTradeListener(self)
-        self._bollinger_bands = BollingerBandsIndicator(sampling_length=self._bollinger_bands_length,alpha=self._bollinger_bands_stddev_num,offset=self._bollinger_bands_offset)
+        self._bollinger_upper_bands = BollingerBandsIndicator(sampling_length=self._bollinger_bands_upper_length,alpha=self._bollinger_bands_upper_stddev_num,offset=self._bollinger_bands_offset)
+
+        self._bollinger_lower_bands = BollingerBandsIndicator(sampling_length=self._bollinger_bands_lower_length,alpha=self._bollinger_bands_lower_stddev_num,offset=self._bollinger_bands_offset)
 
         self.c_add_markets([market_info.market])
 
@@ -540,7 +548,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
 
 
     cdef bint c_is_algorithm_ready(self):
-        return self._bollinger_bands.is_sampling_buffer_full
+        return self._bollinger_upper_bands.is_sampling_buffer_full and self._bollinger_lower_bands.is_sampling_buffer_full
 
     def is_algorithm_ready(self) -> bool:
         return self.c_is_algorithm_ready()
@@ -740,7 +748,8 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         lines.extend(["", f"  upper_band is {str(upper_band):.8}, lower_band is {str(lower_band):.8}"] )
         lines.extend(["", f"  Upper_Spread is {(upper_band_spread + self._ask_spread)*100:.8%}, "
                           f"Lower_Spread is {(lower_band_spread + self._bid_spread)*100:.8%}"] )
-        lines.extend(["", f"  The last 15 BollingerBands data are  {self.get_whole_bollinger_bands()}"] )
+        lines.extend(["", f"  The last {self._bollinger_bands_upper_length} BollingerBands Upper data are  {self.get_whole_bollinger_upper_bands()}"] )
+        lines.extend(["", f"  The last {self._bollinger_bands_lower_length} BollingerBands Lower data are  {self.get_whole_bollinger_lower_bands()}"] )
 
 
         return "\n".join(lines)
@@ -844,8 +853,9 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                 if self.c_to_create_orders(proposal):
                     self.c_execute_orders_proposal(proposal)
             else:
-                if self._bollinger_bands.sampling_length_left % 5 == 0:
-                    self.logger().info(f"Calculating volatility, estimating order book liquidity ... {self._bollinger_bands.sampling_length_left} ticks to start trading")
+
+                if max(self._bollinger_upper_bands.sampling_length_left,self._bollinger_lower_bands.sampling_length_left) % 5 == 0:
+                    self.logger().info(f"Calculating volatility, estimating order book liquidity ... {max(self._bollinger_upper_bands.sampling_length_left,self._bollinger_lower_bands.sampling_length_left)} ticks to start trading")
 
         finally:
             self._last_timestamp = timestamp
@@ -862,7 +872,8 @@ cdef class PureMarketMakingStrategy(StrategyBase):
 
         # orderbook_price = order_book_trade_event.price
         # self._last_trade_price = order_book_trade_event.price
-        self._bollinger_bands.add_sample(order_book_trade_event)
+        self._bollinger_upper_bands.add_sample(order_book_trade_event)
+        self._bollinger_lower_bands.add_sample(order_book_trade_event)
 
         # orderbook_amount = order_book_trade_event.amount
 
@@ -870,20 +881,25 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         # price = self.get_price()
         price_provider = self._asset_price_delegate or self._market_info
         last_price = price_provider.get_price_by_type(PriceType.LastTrade)
-        self._bollinger_bands.add_sample(last_price)
+        self._bollinger_upper_bands.add_sample(last_price)
+        self._bollinger_lower_bands.add_sample(last_price)
 
     def collect_market_variables(self, timestamp: float):
         self.c_collect_market_variables(timestamp)
 
     def get_bollinger_bands(self):
         try:
-            upper_band, lower_band = self._bollinger_bands.current_value
+            upper_band, _ = self._bollinger_upper_bands.current_value
+            _, lower_band = self._bollinger_lower_bands.current_value
         except Exception:
             return Decimal('0'), Decimal('0')
         return Decimal(str(upper_band)), Decimal(str(lower_band))
 
-    def get_whole_bollinger_bands(self):
-        data_list = self._bollinger_bands._processing_buffer
+    def get_whole_bollinger_upper_bands(self):
+        data_list = self._bollinger_upper_bands._processing_buffer
+        return data_list
+    def get_whole_bollinger_lower_bands(self):
+        data_list = self._bollinger_lower_bands._processing_buffer
         return data_list
 
     cdef object c_create_base_proposal(self):

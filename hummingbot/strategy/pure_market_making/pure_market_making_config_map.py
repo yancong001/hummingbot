@@ -308,9 +308,15 @@ pure_market_making_config_map = {
                   type_str="float",
                   validator=lambda v: validate_decimal(v, min_value=0, inclusive=False),
                   default=60),
-    "bollinger_bands_length":
-        ConfigVar(key="bollinger_bands_length",
-                  prompt="Enter amount of ticks that will be stored to estimate BollingerBands >>> ",
+    "bollinger_bands_upper_length":
+        ConfigVar(key="bollinger_bands_upper_length",
+                  prompt="Enter amount of ticks that will be stored to estimate BollingerBands of Upper >>> ",
+                  type_str="int",
+                  validator=lambda v: validate_int(v, 1, 10000),
+                  default=30),
+    "bollinger_bands_lower_length":
+        ConfigVar(key="bollinger_bands_lower_length",
+                  prompt="Enter amount of ticks that will be stored to estimate BollingerBands of Lower >>> ",
                   type_str="int",
                   validator=lambda v: validate_int(v, 1, 10000),
                   default=30),
@@ -320,9 +326,15 @@ pure_market_making_config_map = {
                   type_str="int",
                   validator=lambda v: validate_int(v, -100000, 100000),
                   default=0),
-    "bollinger_bands_stddev_num":
-        ConfigVar(key="bollinger_bands_stddev_num",
-                  prompt="Enter StdDev nums that will be used to caculate BollingerBands >>> ",
+    "bollinger_bands_upper_stddev_num":
+        ConfigVar(key="bollinger_bands_upper_stddev_num",
+                  prompt="Enter StdDev nums that will be used to caculate BollingerBands of Upper >>> ",
+                  type_str="float",
+                  validator=lambda v: validate_decimal(v, min_value=0, inclusive=False),
+                  default=2),
+    "bollinger_bands_lower_stddev_num":
+        ConfigVar(key="bollinger_bands_lower_stddev_num",
+                  prompt="Enter StdDev nums that will be used to caculate BollingerBands of Lower >>> ",
                   type_str="float",
                   validator=lambda v: validate_decimal(v, min_value=0, inclusive=False),
                   default=2),

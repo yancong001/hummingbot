@@ -29,9 +29,11 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         object _max_spread
         double _filled_order_delay_bid
         double _filled_order_delay_ask
-        int _bollinger_bands_length
+        int _bollinger_bands_upper_length
+        int _bollinger_bands_lower_length
         int _bollinger_bands_offset
-        double _bollinger_bands_stddev_num
+        double _bollinger_bands_upper_stddev_num
+        double _bollinger_bands_lower_stddev_num
         bint _inventory_skew_enabled
         object _inventory_target_base_pct
         object _inventory_range_multiplier
@@ -68,7 +70,8 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         object _moving_price_band
         bint _all_listener_ready
         EventListener _order_book_trade_listener
-        object _bollinger_bands
+        object _bollinger_upper_bands
+        object _bollinger_lower_bands
 
     cdef object c_get_mid_price(self)
     cdef object c_create_base_proposal(self)
