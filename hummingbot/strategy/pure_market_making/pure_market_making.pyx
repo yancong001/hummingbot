@@ -188,9 +188,9 @@ cdef class PureMarketMakingStrategy(StrategyBase):
 
         self._all_listener_ready = False
         self._order_book_trade_listener = OrderBookTradeListener(self)
-        self._bollinger_upper_bands = BollingerBandsIndicator(sampling_length=self._bollinger_bands_upper_length,alpha=self._bollinger_bands_upper_stddev_num,offset=self._bollinger_bands_offset)
+        self._bollinger_upper_bands = BollingerBandsIndicator(sampling_length=self._bollinger_bands_upper_length,alpha=self._bollinger_bands_upper_stddev_num,offset=self._bollinger_bands_offset, timeframe=self._bollinger_bands_timeframe)
 
-        self._bollinger_lower_bands = BollingerBandsIndicator(sampling_length=self._bollinger_bands_lower_length,alpha=self._bollinger_bands_lower_stddev_num,offset=self._bollinger_bands_offset)
+        self._bollinger_lower_bands = BollingerBandsIndicator(sampling_length=self._bollinger_bands_lower_length,alpha=self._bollinger_bands_lower_stddev_num,offset=self._bollinger_bands_offset, timeframe=self._bollinger_bands_timeframe)
 
         self.c_add_markets([market_info.market])
 
