@@ -86,6 +86,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                     bollinger_bands_upper_length: int = 30,
                     bollinger_bands_lower_length: int = 30,
                     bollinger_bands_offset: int = 0,
+                    bollinger_bands_timeframe: int = 0,
                     bollinger_bands_upper_stddev_num: float = 2.0,
                     bollinger_bands_lower_stddev_num: float = 2.0,
 
@@ -143,6 +144,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         self._bollinger_bands_upper_length = bollinger_bands_upper_length
         self._bollinger_bands_lower_length = bollinger_bands_lower_length
         self._bollinger_bands_offset = bollinger_bands_offset
+        self._bollinger_bands_timeframe = bollinger_bands_timeframe
         self._bollinger_bands_upper_stddev_num = bollinger_bands_upper_stddev_num
         self._bollinger_bands_lower_stddev_num = bollinger_bands_lower_stddev_num
         self._inventory_skew_enabled = inventory_skew_enabled

@@ -155,6 +155,7 @@ filled_order_delay_ask: null
 bollinger_bands_upper_length: null
 bollinger_bands_lower_length: null
 bollinger_bands_offset: null
+bollinger_bands_timeframe: null
 bollinger_bands_upper_stddev_num: null
 bollinger_bands_lower_stddev_num: null
 

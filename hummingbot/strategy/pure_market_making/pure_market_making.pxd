@@ -32,6 +32,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         int _bollinger_bands_upper_length
         int _bollinger_bands_lower_length
         int _bollinger_bands_offset
+        int _bollinger_bands_timeframe
         double _bollinger_bands_upper_stddev_num
         double _bollinger_bands_lower_stddev_num
         bint _inventory_skew_enabled

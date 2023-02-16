@@ -46,6 +46,7 @@ def start(self):
         bollinger_bands_upper_length = c_map.get("bollinger_bands_upper_length").value
         bollinger_bands_lower_length = c_map.get("bollinger_bands_lower_length").value
         bollinger_bands_offset = c_map.get("bollinger_bands_offset").value
+        bollinger_bands_timeframe = c_map.get("bollinger_bands_timeframe").value
         bollinger_bands_upper_stddev_num = c_map.get("bollinger_bands_upper_stddev_num").value
         bollinger_bands_lower_stddev_num = c_map.get("bollinger_bands_lower_stddev_num").value
         hanging_orders_enabled = c_map.get("hanging_orders_enabled").value
@@ -129,6 +130,7 @@ def start(self):
             bollinger_bands_upper_length=bollinger_bands_upper_length,
             bollinger_bands_lower_length=bollinger_bands_lower_length,
             bollinger_bands_offset=bollinger_bands_offset,
+            bollinger_bands_timeframe=bollinger_bands_timeframe,
             bollinger_bands_upper_stddev_num=bollinger_bands_upper_stddev_num,
             bollinger_bands_lower_stddev_num=bollinger_bands_lower_stddev_num,
             hanging_orders_enabled=hanging_orders_enabled,
