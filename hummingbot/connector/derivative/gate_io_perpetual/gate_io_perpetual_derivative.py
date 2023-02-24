@@ -16,6 +16,7 @@ from hummingbot.connector.derivative.gate_io_perpetual.gate_io_perpetual_auth im
 from hummingbot.connector.derivative.gate_io_perpetual.gate_io_perpetual_user_stream_data_source import (
     GateIoPerpetualAPIUserStreamDataSource,
 )
+from hummingbot.connector.derivative.gate_io_perpetual.gate_io_perpetual_order_book_tracker import GateIoPerpetualOrderBookTracker
 from hummingbot.connector.derivative.position import Position
 from hummingbot.connector.perpetual_derivative_py_base import PerpetualDerivativePyBase
 from hummingbot.connector.trading_rule import TradingRule
@@ -27,10 +28,10 @@ from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTr
 from hummingbot.core.data_type.trade_fee import TokenAmount, TradeFeeBase
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
 from hummingbot.core.network_iterator import NetworkStatus
+from hummingbot.core.utils.async_utils import safe_ensure_future
 from hummingbot.core.utils.estimate_fee import build_trade_fee
 from hummingbot.core.web_assistant.connections.data_types import RESTMethod
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
-
 if TYPE_CHECKING:
     from hummingbot.client.config.config_helpers import ClientConfigAdapter
 
@@ -73,6 +74,11 @@ class GateIoPerpetualDerivative(PerpetualDerivativePyBase):
         self._trading_pairs = trading_pairs
 
         super().__init__(client_config_map)
+        self._set_order_book_tracker(GateIoPerpetualOrderBookTracker(
+            data_source=self._orderbook_ds,
+            trading_pairs=self.trading_pairs,
+            domain=self.domain,
+            connector=self))
 
         self._real_time_balance_update = False
 
@@ -785,3 +791,21 @@ class GateIoPerpetualDerivative(PerpetualDerivativePyBase):
 
     async def _update_funding_payment(self, trading_pair: str, fire_event_on_new: bool) -> bool:
         return True
+
+    async def start_network(self):
+        """
+        Start all required tasks to update the status of the connector. Those tasks include:
+        - The order book tracker
+        - The polling loops to update the trading rules and trading fees
+        - The polling loop to update order status and balance status using REST API (backup for main update process)
+        - The background task to process the events received through the user stream tracker (websocket connection)
+        """
+        self._stop_network()
+        self._trading_rules_polling_task = safe_ensure_future(self._trading_rules_polling_loop())
+        self.order_book_tracker.start()
+        self._trading_fees_polling_task = safe_ensure_future(self._trading_fees_polling_loop())
+        if self.is_trading_required:
+            self._status_polling_task = safe_ensure_future(self._status_polling_loop())
+            self._user_stream_tracker_task = self._create_user_stream_tracker_task()
+            self._user_stream_event_listener_task = safe_ensure_future(self._user_stream_event_listener())
+            self._lost_orders_update_task = safe_ensure_future(self._lost_orders_update_polling_loop())
