@@ -150,6 +150,23 @@ class BitComPerpetualDerivative(PerpetualDerivativePyBase):
         exchange_info = await self._api_get(path_url=self.trading_pairs_request_path,params={"currency":CONSTANTS.CURRENCY})
         return exchange_info
 
+    async def _update_trading_rules(self):
+        exchange_info = await self._api_get(path_url=self.trading_rules_request_path,params={"currency":CONSTANTS.CURRENCY})
+        trading_rules_list = await self._format_trading_rules(exchange_info)
+        self._trading_rules.clear()
+        for trading_rule in trading_rules_list:
+            self._trading_rules[trading_rule.trading_pair] = trading_rule
+        self._initialize_trading_pair_symbols_from_exchange_info(exchange_info=exchange_info)
+
+    async def _initialize_trading_pair_symbol_map(self):
+        try:
+            exchange_info = await self._api_get(path_url=self.trading_pairs_request_path,
+                                                params={"currency": CONSTANTS.CURRENCY})
+
+            self._initialize_trading_pair_symbols_from_exchange_info(exchange_info=exchange_info)
+        except Exception:
+            self.logger().exception("There was an error requesting exchange info.")
+
     def _create_order_book_data_source(self) -> OrderBookTrackerDataSource:
         return BitComPerpetualAPIOrderBookDataSource(
             trading_pairs=self._trading_pairs,
