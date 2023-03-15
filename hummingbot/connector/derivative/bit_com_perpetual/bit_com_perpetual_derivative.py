@@ -425,10 +425,9 @@ class BitComPerpetualDerivative(PerpetualDerivativePyBase):
         """
         ex_trading_pair = position_msg["instrument_id"]
         trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=ex_trading_pair)
-        amount = Decimal(str(position_msg["qty"]))
-        # trading_rule = self._trading_rules[trading_pair]
-        # amount_precision = Decimal(trading_rule.min_base_amount_increment)
-        position_side = "LONG" if position_msg["side"] == "buy" else "SHORT"
+        amount = Decimal(position_msg["qty"])
+        position_side = PositionSide.LONG if Decimal(position_msg.get("qty")) > 0 else PositionSide.SHORT
+
         pos_key = self._perpetual_trading.position_key(trading_pair, position_side)
         entry_price = Decimal(str(position_msg["avg_price"]))
         position = self._perpetual_trading.get_position(trading_pair, position_side)
