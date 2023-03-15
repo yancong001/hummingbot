@@ -87,6 +87,7 @@ class BitComPerpetualUserStreamDataSource(UserStreamTrackerDataSource):
 
             symbols = [await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
                        for trading_pair in self._trading_pairs]
+            pairs = self._trading_pairs
             payload = {
                 "type": "subscribe",
                 "instruments": symbols,
@@ -95,6 +96,7 @@ class BitComPerpetualUserStreamDataSource(UserStreamTrackerDataSource):
                              CONSTANTS.USER_TRADES_ENDPOINT_NAME,
                              CONSTANTS.USER_BALANCES_ENDPOINT_NAME,
                              ],
+                "pairs": pairs,
                 "categories": ["future"],
                 "interval": "raw",
                 "token": self.token,
