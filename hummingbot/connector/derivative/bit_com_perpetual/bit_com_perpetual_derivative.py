@@ -315,10 +315,11 @@ class BitComPerpetualDerivative(PerpetualDerivativePyBase):
                 "label": tracked_order.client_order_id
             },
             is_auth_required=True)
+        current_state = order_update["data"][0]["status"]
         _order_update: OrderUpdate = OrderUpdate(
             trading_pair=tracked_order.trading_pair,
             update_timestamp=order_update["data"][0]["updated_at"] * 1e-3,
-            new_state=CONSTANTS.ORDER_STATE[order_update["data"][0]["status"]],
+            new_state=CONSTANTS.ORDER_STATE[current_state] if current_state != "pending" else tracked_order.current_state,
             client_order_id=order_update["data"][0]["label"],
             exchange_order_id=order_update["data"][0]["order_id"],
         )
@@ -456,10 +457,11 @@ class BitComPerpetualDerivative(PerpetualDerivativePyBase):
             self.logger().debug(f"Ignoring order message with id {client_order_id}: not in in_flight_orders.")
             return
         # order_update = self._create_order_update_with_order_status_data(order_status=order_msg, order=tracked_order)
+        current_state = order_msg["status"]
         order_update: OrderUpdate = OrderUpdate(
             trading_pair=tracked_order.trading_pair,
             update_timestamp=order_msg["updated_at"] * 1e-3,
-            new_state=CONSTANTS.ORDER_STATE[order_msg["status"]],
+            new_state=CONSTANTS.ORDER_STATE[current_state] if current_state != "pending" else tracked_order.current_state,
             client_order_id=order_msg["label"],
             exchange_order_id=order_msg["order_id"],
         )
