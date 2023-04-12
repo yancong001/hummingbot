@@ -17,6 +17,8 @@ def start(self):
     market_2 = amm_arb_config_map.get("market_2").value
     order_amount = amm_arb_config_map.get("order_amount").value
     min_profitability = amm_arb_config_map.get("min_profitability").value / Decimal("100")
+    use_fixed_conversion_rate = amm_arb_config_map.get("use_fixed_conversion_rate").value
+    taker_to_maker_quote_conversion_rate = amm_arb_config_map.get("taker_to_maker_quote_conversion_rate").value
     market_1_slippage_buffer = amm_arb_config_map.get("market_1_slippage_buffer").value / Decimal("100")
     market_2_slippage_buffer = amm_arb_config_map.get("market_2_slippage_buffer").value / Decimal("100")
     concurrent_orders_submission = amm_arb_config_map.get("concurrent_orders_submission").value
@@ -63,4 +65,6 @@ def start(self):
                               market_2_slippage_buffer=market_2_slippage_buffer,
                               concurrent_orders_submission=concurrent_orders_submission,
                               gateway_transaction_cancel_interval=gateway_transaction_cancel_interval,
+                              use_fixed_conversion_rate=use_fixed_conversion_rate,
+                              taker_to_maker_quote_conversion_rate=taker_to_maker_quote_conversion_rate,
                               )

@@ -58,8 +58,8 @@ class AmmArbStrategy(StrategyPyBase):
     _last_timestamp: float
     _status_report_interval: float
     _quote_eth_rate_fetch_loop_task: Optional[asyncio.Task]
-    _market_1_quote_eth_rate: None          # XXX (martin_kou): Why are these here?
-    _market_2_quote_eth_rate: None          # XXX (martin_kou): Why are these here?
+    _market_1_quote_eth_rate: None  # XXX (martin_kou): Why are these here?
+    _market_2_quote_eth_rate: None  # XXX (martin_kou): Why are these here?
     _rate_source: RateOracle
     _cancel_outdated_orders_task: Optional[asyncio.Task]
     _gateway_transaction_cancel_interval: int
@@ -81,6 +81,8 @@ class AmmArbStrategy(StrategyPyBase):
                     concurrent_orders_submission: bool = True,
                     status_report_interval: float = 900,
                     gateway_transaction_cancel_interval: int = 600,
+                    use_fixed_conversion_rate: bool = False,
+                    taker_to_maker_quote_conversion_rate: Decimal = Decimal("1"),
                     ):
         """
         Assigns strategy parameters, this function must be called directly after init.
@@ -124,6 +126,9 @@ class AmmArbStrategy(StrategyPyBase):
 
         self._cancel_outdated_orders_task = None
         self._gateway_transaction_cancel_interval = gateway_transaction_cancel_interval
+
+        self._use_fixed_conversion_rate = use_fixed_conversion_rate
+        self._taker_to_maker_quote_conversion_rate = taker_to_maker_quote_conversion_rate
 
         self._order_id_side_map: Dict[str, ArbProposalSide] = {}
 
@@ -215,6 +220,8 @@ class AmmArbStrategy(StrategyPyBase):
             if t.profit_pct(
                 rate_source=self._rate_source,
                 account_for_fee=True,
+                use_fixed_conversion_rate=self._use_fixed_conversion_rate,
+                taker_to_maker_quote_conversion_rate=self._taker_to_maker_quote_conversion_rate
             ) >= self._min_profitability
         ]
         if len(profitable_arb_proposals) == 0:
@@ -391,6 +398,8 @@ class AmmArbStrategy(StrategyPyBase):
             profit_pct = proposal.profit_pct(
                 rate_source=self._rate_source,
                 account_for_fee=True,
+                use_fixed_conversion_rate=self._use_fixed_conversion_rate,
+                taker_to_maker_quote_conversion_rate=self._taker_to_maker_quote_conversion_rate
             )
             lines.append(f"{'    ' if indented else ''}{side1} at {market_1_name}"
                          f", {side2} at {market_2_name}: "
@@ -400,7 +409,9 @@ class AmmArbStrategy(StrategyPyBase):
     def quotes_rate_df(self):
         columns = ["Quotes pair", "Rate"]
         quotes_pair: str = f"{self._market_info_2.quote_asset}-{self._market_info_1.quote_asset}"
-        data = [[quotes_pair, PerformanceMetrics.smart_round(self._rate_source.get_pair_rate(quotes_pair))]]
+        data = [[quotes_pair, PerformanceMetrics.smart_round(self._rate_source.get_pair_rate(quotes_pair)
+                                                             if not self._use_fixed_conversion_rate
+                                                             else self._taker_to_maker_quote_conversion_rate)]]
 
         return pd.DataFrame(data=data, columns=columns)
 
@@ -422,7 +433,8 @@ class AmmArbStrategy(StrategyPyBase):
             # check for unavailable price data
             buy_price = PerformanceMetrics.smart_round(Decimal(str(buy_price)), 8) if buy_price is not None else '-'
             sell_price = PerformanceMetrics.smart_round(Decimal(str(sell_price)), 8) if sell_price is not None else '-'
-            mid_price = PerformanceMetrics.smart_round(((buy_price + sell_price) / 2), 8) if '-' not in [buy_price, sell_price] else '-'
+            mid_price = PerformanceMetrics.smart_round(((buy_price + sell_price) / 2), 8) if '-' not in [buy_price,
+                                                                                                         sell_price] else '-'
 
             data.append([
                 market.display_name,
@@ -455,7 +467,7 @@ class AmmArbStrategy(StrategyPyBase):
         lines.extend(["", "  Profitability:"] + self.short_proposal_msg(self._all_arb_proposals))
 
         quotes_rates_df = self.quotes_rate_df()
-        lines.extend(["", f"  Quotes Rates ({str(self._rate_source)})"] +
+        lines.extend(["", f"  Quotes Rates ({str(self._rate_source) if not self._use_fixed_conversion_rate else 'fixed_conversion_rate'})"] +
                      ["    " + line for line in str(quotes_rates_df).split("\n")])
 
         warning_lines = self.network_warning([self._market_info_1])

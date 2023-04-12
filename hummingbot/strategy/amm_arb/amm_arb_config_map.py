@@ -95,6 +95,24 @@ amm_arb_config_map = {
         default=Decimal("1"),
         validator=lambda v: validate_decimal(v),
         type_str="decimal"),
+    "use_fixed_conversion_rate": ConfigVar(
+        key="use_fixed_conversion_rate",
+        type_str="bool",
+        prompt="Do you want to convert between different trading pairs using fixed conversion rates? (Yes/No) >>> ",
+        prompt_on_new=True,
+        default=False,
+        validator=validate_bool),
+    "taker_to_maker_quote_conversion_rate": ConfigVar(
+        key="taker_to_maker_quote_conversion_rate",
+        prompt="Enter conversion rate for taker quote asset value to maker quote asset value, e.g. "
+               "if maker quote asset is USD and the taker is DAI, 1 DAI is valued at 1.25 USD, "
+               "the conversion rate is 1.25 >>> ",
+        default=Decimal("1"),
+        validator=lambda v: validate_decimal(v, Decimal(0), inclusive=False),
+        type_str="decimal",
+        required_if=lambda: amm_arb_config_map.get(
+            "use_fixed_conversion_rate").value,
+    ),
     "market_1_slippage_buffer": ConfigVar(
         key="market_1_slippage_buffer",
         prompt="How much buffer do you want to add to the price to account for slippage for orders on the first market "
