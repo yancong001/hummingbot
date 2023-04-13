@@ -200,6 +200,7 @@ class AmmArbStrategy(StrategyPyBase):
         min profitability required, applies the slippage buffer, applies budget constraint, then finally execute the
         arbitrage.
         """
+        self.logger().info(f"Start a new tick.")
         self._all_arb_proposals = await create_arb_proposals(
             market_info_1=self._market_info_1,
             market_info_2=self._market_info_2,
@@ -225,7 +226,7 @@ class AmmArbStrategy(StrategyPyBase):
             ) >= self._min_profitability
         ]
         if len(profitable_arb_proposals) == 0:
-            if self._last_no_arb_reported < self.current_timestamp - 20.:
+            if self._last_no_arb_reported < self.current_timestamp - 2.:
                 self.logger().info("No arbitrage opportunity.\n" +
                                    "\n".join(self.short_proposal_msg(self._all_arb_proposals, False)))
                 self._last_no_arb_reported = self.current_timestamp
@@ -311,6 +312,7 @@ class AmmArbStrategy(StrategyPyBase):
         """
         for arb_proposal in arb_proposals:
             if any(p.amount <= s_decimal_zero for p in (arb_proposal.first_side, arb_proposal.second_side)):
+                self.logger().info(f"Arbitrage amount less than zero,pass it ! : {arb_proposal}")
                 continue
 
             if not self._concurrent_orders_submission:
