@@ -112,6 +112,7 @@ amm_arb_config_map = {
         type_str="decimal",
         required_if=lambda: amm_arb_config_map.get(
             "use_fixed_conversion_rate").value,
+        prompt_on_new=True,
     ),
     "market_1_slippage_buffer": ConfigVar(
         key="market_1_slippage_buffer",

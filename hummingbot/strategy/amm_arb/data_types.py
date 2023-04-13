@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Type
 from decimal import Decimal
 
 from hummingbot.client.config.trade_fee_schema_loader import TradeFeeSchemaLoader
@@ -60,7 +60,7 @@ class AmmTradeFeeBase(TradeFeeBase):
                 fee_amount += flat_fee.amount * price
             else:
                 conversion_pair: str = combine_to_hb_trading_pair(base=flat_fee.token, quote=token)
-                conversion_rate: Decimal = self._get_exchange_rate(conversion_pair, exchange, rate_source)
+                # conversion_rate: Decimal = self._get_exchange_rate(conversion_pair, exchange, rate_source)
                 if taker_to_maker_quote_conversion_rate:
                     conversion_rate: Decimal = taker_to_maker_quote_conversion_rate
                 else:
@@ -68,6 +68,92 @@ class AmmTradeFeeBase(TradeFeeBase):
                 fee_amount += (flat_fee.amount * conversion_rate)
         return fee_amount
 
+    @classmethod
+    def new_spot_fee(cls,
+                     fee_schema: TradeFeeSchema,
+                     trade_type: TradeType,
+                     percent: Decimal = S_DECIMAL_0,
+                     percent_token: Optional[str] = None,
+                     flat_fees: Optional[List[TokenAmount]] = None) -> "TradeFeeBase":
+        fee_cls: Type[TradeFeeBase] = (
+            AddedToCostTradeFee
+            if (trade_type == TradeType.BUY and
+                (not fee_schema.buy_percent_fee_deducted_from_returns
+                 or fee_schema.percent_fee_token is not None))
+            else DeductedFromReturnsTradeFee)
+        return fee_cls(
+            percent=percent,
+            percent_token=percent_token,
+            flat_fees=flat_fees or []
+        )
+
+class AddedToCostTradeFee(AmmTradeFeeBase):
+
+    @classmethod
+    def type_descriptor_for_json(cls) -> str:
+        return "AddedToCost"
+
+    def get_fee_impact_on_order_cost(
+            self, order_candidate: "OrderCandidate", exchange: "ExchangeBase"
+    ) -> Optional[TokenAmount]:
+        """
+        WARNING: Do not use this method for sizing. Instead, use the `BudgetChecker`.
+
+        Returns the impact of the fee on the cost requirements for the candidate order.
+        """
+        ret = None
+        if self.percent != S_DECIMAL_0:
+            fee_token = self.percent_token or order_candidate.order_collateral.token
+            if order_candidate.order_collateral is None or fee_token != order_candidate.order_collateral.token:
+                token, size = order_candidate.get_size_token_and_order_size()
+                if fee_token == token:
+                    exchange_rate = Decimal("1")
+                else:
+                    exchange_pair = combine_to_hb_trading_pair(token, fee_token)  # buy order token w/ pf token
+                    exchange_rate = exchange.get_price(exchange_pair, is_buy=True)
+                fee_amount = size * exchange_rate * self.percent
+            else:  # self.percent_token == order_candidate.order_collateral.token
+                fee_amount = order_candidate.order_collateral.amount * self.percent
+            ret = TokenAmount(fee_token, fee_amount)
+        return ret
+
+    def get_fee_impact_on_order_returns(
+            self, order_candidate: "OrderCandidate", exchange: "ExchangeBase"
+    ) -> Optional[Decimal]:
+        """
+        WARNING: Do not use this method for sizing. Instead, use the `BudgetChecker`.
+
+        Returns the impact of the fee on the expected returns from the candidate order.
+        """
+        return None
+
+
+class DeductedFromReturnsTradeFee(AmmTradeFeeBase):
+
+    @classmethod
+    def type_descriptor_for_json(cls) -> str:
+        return "DeductedFromReturns"
+
+    def get_fee_impact_on_order_cost(
+            self, order_candidate: "OrderCandidate", exchange: "ExchangeBase"
+    ) -> Optional[TokenAmount]:
+        """
+        WARNING: Do not use this method for sizing. Instead, use the `BudgetChecker`.
+
+        Returns the impact of the fee on the cost requirements for the candidate order.
+        """
+        return None
+
+    def get_fee_impact_on_order_returns(
+            self, order_candidate: "OrderCandidate", exchange: "ExchangeBase"
+    ) -> Optional[Decimal]:
+        """
+        WARNING: Do not use this method for sizing. Instead, use the `BudgetChecker`.
+
+        Returns the impact of the fee on the expected returns from the candidate order.
+        """
+        impact = order_candidate.potential_returns.amount * self.percent
+        return impact
 
 def build_trade_fee(
     exchange: str,
