@@ -228,7 +228,33 @@ ORDER_REFRESH_MODELS = {
 
 class PerpCrossExchangeMarketMakingConfigMap(BaseTradingStrategyMakerTakerConfigMap):
     strategy: str = Field(default="perp_cross_exchange_market_making", client_data=None)
+    maker_market: ClientConfigEnum(
+        value="MakerMarkets",  # noqa: F821
+        names={e: e for e in sorted(AllConnectorSettings.get_derivative_names())},
+        type=str,
+    ) = Field(
+        default=...,
+        description="The name of the maker exchange connector.",
+        client_data=ClientFieldData(
+            prompt=lambda mi: "Enter your maker spot connector",
+            prompt_on_new=True,
+        ),
+    )
 
+    @classmethod
+    def trading_pair_prompt(cls, model_instance: 'BaseTradingStrategyMakerTakerConfigMap', is_maker: bool) -> str:
+        if is_maker:
+            exchange = model_instance.maker_market
+            example = AllConnectorSettings.get_example_pairs().get(exchange)
+            market_type = "maker"
+        else:
+            exchange = model_instance.taker_market
+            example = AllConnectorSettings.get_example_pairs().get(exchange)
+            market_type = "taker"
+        return (
+            f"Enter the token trading pair you would like to trade on {market_type} market:"
+            f" {exchange}{f' (e.g. {example})' if example else ''}"
+        )
     min_profitability: Decimal = Field(
         default=...,
         description="The minimum estimated profitability required to open a position.",
@@ -359,10 +385,11 @@ class PerpCrossExchangeMarketMakingConfigMap(BaseTradingStrategyMakerTakerConfig
             prompt_on_new=True,
         ),
     )
+
     taker_market: ClientConfigEnum(
         value="TakerMarkets",  # noqa: F821
         names={e: e for e in
-               sorted(AllConnectorSettings.get_exchange_names().union(
+               sorted(AllConnectorSettings.get_derivative_names().union(
                    AllConnectorSettings.get_gateway_amm_connector_names()
                ))},
         type=str,
