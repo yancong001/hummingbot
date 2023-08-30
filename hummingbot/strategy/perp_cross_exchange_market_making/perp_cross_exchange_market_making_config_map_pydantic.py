@@ -228,18 +228,6 @@ ORDER_REFRESH_MODELS = {
 
 class PerpCrossExchangeMarketMakingConfigMap(BaseTradingStrategyMakerTakerConfigMap):
     strategy: str = Field(default="perp_cross_exchange_market_making", client_data=None)
-    maker_market: ClientConfigEnum(
-        value="MakerMarkets",  # noqa: F821
-        names={e: e for e in sorted(AllConnectorSettings.get_derivative_names())},
-        type=str,
-    ) = Field(
-        default=...,
-        description="The name of the maker exchange connector.",
-        client_data=ClientFieldData(
-            prompt=lambda mi: "Enter your maker spot connector",
-            prompt_on_new=True,
-        ),
-    )
 
     @classmethod
     def trading_pair_prompt(cls, model_instance: 'BaseTradingStrategyMakerTakerConfigMap', is_maker: bool) -> str:
@@ -385,7 +373,18 @@ class PerpCrossExchangeMarketMakingConfigMap(BaseTradingStrategyMakerTakerConfig
             prompt_on_new=True,
         ),
     )
-
+    maker_market: ClientConfigEnum(
+        value="MakerMarkets",  # noqa: F821
+        names={e: e for e in sorted(AllConnectorSettings.get_derivative_names())},
+        type=str,
+    ) = Field(
+        default=...,
+        description="The name of the maker exchange connector.",
+        client_data=ClientFieldData(
+            prompt=lambda mi: "Enter your maker derivative connector",
+            prompt_on_new=True,
+        ),
+    )
     taker_market: ClientConfigEnum(
         value="TakerMarkets",  # noqa: F821
         names={e: e for e in
