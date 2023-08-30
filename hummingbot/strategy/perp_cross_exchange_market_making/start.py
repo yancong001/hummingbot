@@ -3,8 +3,8 @@ from typing import List, Tuple, cast
 from hummingbot.client.settings import AllConnectorSettings
 from hummingbot.connector.gateway.amm.gateway_evm_amm import GatewayEVMAMM
 from hummingbot.connector.gateway.gateway_price_shim import GatewayPriceShim
-from hummingbot.strategy.cross_exchange_market_making.cross_exchange_market_making import (
-    CrossExchangeMarketMakingStrategy,
+from hummingbot.strategy.perp_cross_exchange_market_making.perp_cross_exchange_market_making import (
+    PerpCrossExchangeMarketMakingStrategy,
     LogOption,
 )
 from hummingbot.strategy.maker_taker_market_pair import MakerTakerMarketPair
@@ -62,7 +62,7 @@ def start(self):
         LogOption.STATUS_REPORT,
         LogOption.MAKER_ORDER_HEDGED
     )
-    self.strategy = CrossExchangeMarketMakingStrategy()
+    self.strategy = PerpCrossExchangeMarketMakingStrategy()
     self.strategy.init_params(
         config_map=c_map,
         market_pairs=[self.market_pair],
