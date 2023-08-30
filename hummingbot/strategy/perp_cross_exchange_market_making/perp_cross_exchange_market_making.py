@@ -1,3 +1,4 @@
+import datetime
 import logging
 from collections import defaultdict, deque
 from decimal import Decimal
@@ -126,6 +127,18 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
 
         self._last_conv_rates_logged = 0
         self._hb_app_notification = hb_app_notification
+        self._trading_pair = list([market_pair.maker.trading_pair for market_pair in market_pairs])[0]
+
+        self._bid_min_profitability = self._config_map.min_profitability / 2
+        self._ask_min_profitability = self._config_map.min_profitability / 2
+
+        self.avg_bid_exe_profit = 0
+        self.avg_ask_exe_profit = 0
+        self._opening_position_num = 0
+        self._exposure_position = 0
+
+        self._avg_bid_profit_pct = 0
+        self._avg_ask_profit_pct = 0
 
         # Holds active maker orders, all its taker orders ever created
         self._maker_to_taker_order_ids = {}
@@ -138,6 +151,25 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
 
         self.add_markets(all_markets)
 
+    @property
+    def bid_min_profitability(self):
+        return self._bid_min_profitability
+
+    @property
+    def ask_min_profitability(self):
+        return self._ask_min_profitability
+
+    @property
+    def maker_active_positions(self) -> List[LimitOrder]:
+        return list(self._maker_markets)[0].account_positions
+
+    @property
+    def taker_active_positions(self) -> List[LimitOrder]:
+        return list(self._taker_markets)[0].account_positions
+
+    @property
+    def maker_market_in_flight_orders(self):
+        return list(self._maker_markets)[0].market._in_flight_orders
     @property
     def order_amount(self):
         return self._config_map.order_amount
@@ -246,6 +278,61 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
     def is_gateway_market(market_info: MarketTradingPairTuple) -> bool:
         return market_info.market.name in AllConnectorSettings.get_gateway_amm_connector_names()
 
+    def position_risk_control(self):
+        maker_trading_pair_position_list = [idx for idx in self.maker_active_positions.values()
+                                       if idx.trading_pair == self._trading_pair]
+        taker_trading_pair_position_list = [idx for idx in self.taker_active_positions.values()
+                                       if idx.trading_pair == self._trading_pair]
+        if maker_trading_pair_position_list and taker_trading_pair_position_list:
+            maker_trading_pair_position = maker_trading_pair_position_list[0]
+            taker_trading_pair_position = taker_trading_pair_position_list[0]
+            #判断两者数量是否一致，不一致则存在敞口，需要处理
+            if abs(abs(maker_trading_pair_position.amount) - abs(taker_trading_pair_position.amount)) > self.order_amount or \
+                    abs(maker_trading_pair_position.amount)> 10*self.order_amount or \
+                    abs(taker_trading_pair_position.amount)> 10*self.order_amount :
+                self._exposure_position = abs(maker_trading_pair_position.amount) - abs(taker_trading_pair_position.amount)
+                return True
+            else:
+                self._exposure_position = 0
+                return False
+        else:
+            self._exposure_position = 0
+            return False
+
+    def active_positions_df(self) -> pd.DataFrame:
+        columns = ["Exchange", "Symbol", "Type", "Entry Price", "Amount", "Leverage", "Unrealized PnL"]
+        data = []
+        maker_market, trading_pair = list(self._maker_markets)[0], self._trading_pair
+        taker_market = list(self._taker_markets)[0]
+
+        for idx in self.maker_active_positions.values():
+            # is_buy = True if idx.amount > 0 else False
+            # unrealized_profit = ((market.get_price(trading_pair, is_buy) - idx.entry_price) * idx.amount)
+            data.append([
+                maker_market.display_name,
+                idx.trading_pair,
+                idx.position_side.name,
+                idx.entry_price,
+                idx.amount,
+                idx.leverage,
+                idx.unrealized_pnl
+            ])
+
+        for idx in self.taker_active_positions.values():
+            # is_buy = True if idx.amount > 0 else False
+            # unrealized_profit = ((market.get_price(trading_pair, is_buy) - idx.entry_price) * idx.amount)
+            data.append([
+                taker_market.display_name,
+                idx.trading_pair,
+                idx.position_side.name,
+                idx.entry_price,
+                idx.amount,
+                idx.leverage,
+                idx.unrealized_pnl
+            ])
+
+        return pd.DataFrame(data=data, columns=columns)
+
     def get_conversion_rates(self, market_pair: MarketTradingPairTuple):
         quote_pair, quote_rate_source, quote_rate, base_pair, base_rate_source, base_rate, gas_pair, gas_rate_source,\
             gas_rate = self._config_map.conversion_rate_mode.get_conversion_rates(market_pair)
@@ -330,11 +417,25 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
                     markets_df = markets_df.append(taker_data, ignore_index=True)
             lines.extend(["", "  Markets:"] +
                          ["    " + line for line in str(markets_df).split("\n")])
+            maker_mid_price = markets_df['Mid Price'].iloc[0]
+            taker_mid_price = markets_df['Mid Price'].iloc[1]
+            maker_to_taker_spread_percent = round((maker_mid_price - taker_mid_price) / taker_mid_price * 100, 4)
+            lines.extend(["", f"             Mid_price spread: {maker_to_taker_spread_percent}% b_pct "
+                              # f"{round(self._avg_bid_profit_pct * 100, 4)}%, a_pct {round(self._avg_ask_profit_pct * 100, 4)}%"])
+                              f"{round(self._avg_bid_profit_pct * 100, 4)}%, a_pct {round(self._avg_ask_profit_pct * 100, 4)}%"])
 
             oracle_df = self.oracle_status_df()
             if not oracle_df.empty:
                 lines.extend(["", "  Rate conversion:"] +
                              ["    " + line for line in str(oracle_df).split("\n")])
+            if len(self.maker_active_positions) > 0 or len(self.taker_active_positions) > 0:
+                df = self.active_positions_df()
+                lines.extend(["", "  Positions:"] + ["    " + line for line in df.to_string(index=False).split("\n")])
+                if self._exposure_position != 0:
+                    lines.extend(["", f"  Exposure Position: {self._exposure_position}."])
+
+            else:
+                lines.extend(["", "  No active positions."])
 
             assets_df = self.wallet_balance_data_frame([market_pair.maker, market_pair.taker])
             lines.extend(["", "  Assets:"] +
@@ -351,6 +452,9 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
                              ["    " + line for line in df_lines])
             else:
                 lines.extend(["", "  No active maker market orders."])
+            lines.extend(["", f"  Opening order count: {self._opening_position_num}."])
+            lines.extend(["",
+                          f"  bid_min_p {round(self.bid_min_profitability * 100, 4)}%, ask_min_p {round(self.ask_min_profitability * 100, 4)}%."])
 
             warning_lines.extend(self.balance_warning([market_pair.maker, market_pair.taker]))
 
@@ -438,15 +542,16 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
                 if not self._sb_order_tracker.has_in_flight_cancel(limit_order.client_order_id) and \
                         limit_order.client_order_id in self._maker_to_taker_order_ids.keys():
                     market_pair_to_active_orders[market_pair].append(limit_order)
-
+            if self.position_risk_control():
+                return
             # Process each market pair independently.
             for market_pair in self._market_pairs.values():
                 await self.process_market_pair(timestamp, market_pair, market_pair_to_active_orders[market_pair])
 
             # log conversion rates every 5 minutes
-            if self._last_conv_rates_logged + (60. * 5) < timestamp:
-                self.log_conversion_rates()
-                self._last_conv_rates_logged = timestamp
+            # if self._last_conv_rates_logged + (60. * 5) < timestamp:
+            #     self.log_conversion_rates()
+            #     self._last_conv_rates_logged = timestamp
         finally:
             self._last_timestamp = timestamp
 
@@ -485,14 +590,14 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
             if self.is_gateway_market(market_pair.taker):
                 gateway_connectors.append(cast(GatewayEVMAMM, market_pair.taker.market))
 
-    def has_active_taker_order(self, market_pair: MarketTradingPairTuple):
-        # Market orders are not being submitted as taker orders, limit orders are preferred at all times
-        limit_orders = self._sb_order_tracker.get_limit_orders()
-        limit_orders = limit_orders.get(market_pair, {})
-        if len(limit_orders) > 0:
-            if len(set(limit_orders.keys()).intersection(set(self._taker_to_maker_order_ids.keys()))) > 0:
-                return True
-        return False
+    # def has_active_taker_order(self, market_pair: MarketTradingPairTuple):
+    #     # Market orders are not being submitted as taker orders, limit orders are preferred at all times
+    #     limit_orders = self._sb_order_tracker.get_limit_orders()
+    #     limit_orders = limit_orders.get(market_pair, {})
+    #     if len(limit_orders) > 0:
+    #         if len(set(limit_orders.keys()).intersection(set(self._taker_to_maker_order_ids.keys()))) > 0:
+    #             return True
+    #     return False
 
     async def process_market_pair(self, timestamp: float, market_pair: MarketTradingPairTuple, active_orders: List):
         """
@@ -568,8 +673,8 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
             return
 
         # If there are pending taker orders, wait for them to complete
-        if self.has_active_taker_order(market_pair):
-            return
+        # if self.has_active_taker_order(market_pair):
+        #     return
 
         # See if it's profitable to place a limit order on maker market.
         await self.check_and_create_new_orders(market_pair, has_active_bid, has_active_ask)
@@ -597,12 +702,12 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
                 else:
                     self._order_fill_buy_events[market_pair].append(order_fill_record)
 
-                if LogOption.MAKER_ORDER_FILLED in self.logging_options:
-                    self.log_with_clock(
-                        logging.INFO,
-                        f"({market_pair.maker.trading_pair}) Maker buy order of "
-                        f"{order_filled_event.amount} {market_pair.maker.base_asset} filled."
-                    )
+                # if LogOption.MAKER_ORDER_FILLED in self.logging_options:
+                #     self.log_with_clock(
+                #         logging.INFO,
+                #         f"({market_pair.maker.trading_pair}) Maker buy order of "
+                #         f"{order_filled_event.amount} {market_pair.maker.base_asset} filled."
+                #     )
 
             else:
                 if market_pair not in self._order_fill_sell_events:
@@ -610,15 +715,19 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
                 else:
                     self._order_fill_sell_events[market_pair].append(order_fill_record)
 
-                if LogOption.MAKER_ORDER_FILLED in self.logging_options:
-                    self.log_with_clock(
-                        logging.INFO,
-                        f"({market_pair.maker.trading_pair}) Maker sell order of "
-                        f"{order_filled_event.amount} {market_pair.maker.base_asset} filled."
-                    )
+                # if LogOption.MAKER_ORDER_FILLED in self.logging_options:
+                #     self.log_with_clock(
+                #         logging.INFO,
+                #         f"({market_pair.maker.trading_pair}) Maker sell order of "
+                #         f"{order_filled_event.amount} {market_pair.maker.base_asset} filled."
+                #     )
 
             # Call check_and_hedge_orders() to emit the orders on the taker side.
             try:
+                self.log_with_clock(
+                    logging.INFO,
+                    f"###### Filled_order_event,time: {datetime.datetime.utcnow()}  "
+                )
                 await self.check_and_hedge_orders(maker_order_id, market_pair)
             except Exception:
                 self.log_with_clock(logging.ERROR, "Unexpected error.", exc_info=True)
@@ -693,7 +802,9 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
                 )
                 self.notify_hb_app_with_timestamp(
                     f"Maker BUY order ({limit_order_record.quantity} {limit_order_record.base_currency} @ "
-                    f"{limit_order_record.price} {limit_order_record.quote_currency}) is filled."
+                    f"{limit_order_record.price} {limit_order_record.quote_currency}) "
+                    f"{limit_order_record.price * limit_order_record.quantity} {limit_order_record.quote_currency}) is filled."
+
                 )
                 # Leftover other side maker order will be left in the market until its expiration or potential fill
                 # Since the buy side side was filled, the sell side maker order is unlikely to be filled, therefore
@@ -701,14 +812,20 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
                 # The others are left in the market to collect market making fees
                 # Meanwhile new maker order may be placed
             if order_id in self._taker_to_maker_order_ids.keys():
+                self._opening_position_num -= 1
                 self.log_with_clock(
                     logging.INFO,
                     f"({market_pair.taker.trading_pair}) Taker buy order {order_id} for "
                     f"({order_completed_event.base_asset_amount} {order_completed_event.base_asset} has been completely filled."
                 )
+                # self.notify_hb_app_with_timestamp(
+                #     f"Taker BUY order ({order_completed_event.base_asset_amount} {order_completed_event.base_asset} "
+                #     f"{order_completed_event.quote_asset}) is filled."
+                # )
                 self.notify_hb_app_with_timestamp(
-                    f"Taker BUY order ({order_completed_event.base_asset_amount} {order_completed_event.base_asset} "
-                    f"{order_completed_event.quote_asset}) is filled."
+                    f"Taker buy order {order_completed_event.quote_asset_amount/order_completed_event.base_asset_amount} {order_completed_event.base_asset} "
+                    f"{order_completed_event.quote_asset_amount} {order_completed_event.quote_asset} is filled. \n"
+                    f"  bid_min_p {round(self.bid_min_profitability * 100, 4)}%, ask_min_p {round(self.ask_min_profitability * 100, 4)}%."
                 )
                 maker_order_id = self._taker_to_maker_order_ids[order_id]
                 # Remove the completed taker order
@@ -759,7 +876,9 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
                 )
                 self.notify_hb_app_with_timestamp(
                     f"Maker sell order ({limit_order_record.quantity} {limit_order_record.base_currency} @ "
-                    f"{limit_order_record.price} {limit_order_record.quote_currency}) is filled."
+                    f"{limit_order_record.price} {limit_order_record.quote_currency} "
+                    f"{limit_order_record.price * limit_order_record.quantity} {limit_order_record.quote_currency}) is filled."
+
                 )
                 # Leftover other side maker order will be left in the market until its expiration or potential fill
                 # Since the sell side side was filled, the buy side maker order is unlikely to be filled, therefore
@@ -767,15 +886,22 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
                 # The others are left in the market to collect market making fees
                 # Meanwhile new maker order may be placed
             if order_id in self._taker_to_maker_order_ids.keys():
+                self._opening_position_num += 1
+
                 self.log_with_clock(
                     logging.INFO,
                     f"({market_pair.taker.trading_pair}) Taker sell order {order_id} for "
                     f"({order_completed_event.base_asset_amount} {order_completed_event.base_asset} "
                     f"has been completely filled."
                 )
+                # self.notify_hb_app_with_timestamp(
+                #     f"Taker SELL order ({order_completed_event.base_asset_amount} {order_completed_event.base_asset} "
+                #     f"{order_completed_event.quote_asset}) is filled."
+                # )
                 self.notify_hb_app_with_timestamp(
-                    f"Taker SELL order ({order_completed_event.base_asset_amount} {order_completed_event.base_asset} "
-                    f"{order_completed_event.quote_asset}) is filled."
+                    f"Taker sell order {order_completed_event.quote_asset_amount/order_completed_event.base_asset_amount} {order_completed_event.base_asset} "
+                    f"{order_completed_event.quote_asset_amount} {order_completed_event.quote_asset} is filled.\n"
+                    f"  bid_min_p {round(self.bid_min_profitability * 100, 4)}%, ask_min_p {round(self.ask_min_profitability * 100, 4)}%."
                 )
                 maker_order_id = self._taker_to_maker_order_ids[order_id]
                 # Remove the completed taker order
@@ -872,11 +998,12 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
             # Taker sell
             taker_slippage_adjustment_factor = Decimal("1") - self.slippage_buffer
 
-            hedged_order_quantity = min(
-                buy_fill_quantity / base_rate,
-                taker_market.get_available_balance(market_pair.taker.base_asset) *
-                self.order_size_taker_balance_factor
-            )
+            hedged_order_quantity = buy_fill_quantity
+            # hedged_order_quantity = min(
+            #     buy_fill_quantity / base_rate,
+            #     taker_market.get_available_balance(market_pair.taker.base_asset) *
+            #     self.order_size_taker_balance_factor
+            # )
             quantized_hedge_amount = taker_market.quantize_order_amount(taker_trading_pair, Decimal(hedged_order_quantity))
 
             avg_fill_price = (sum([r.price * r.amount for _, r in buy_fill_records]) /
@@ -950,11 +1077,13 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
                     sell_fill_quantity / base_rate
                 ).result_price
 
-            hedged_order_quantity = min(
-                sell_fill_quantity / base_rate,
-                taker_market.get_available_balance(market_pair.taker.quote_asset) /
-                taker_price * self.order_size_taker_balance_factor
-            )
+            hedged_order_quantity = sell_fill_quantity
+
+            # hedged_order_quantity = min(
+            #     sell_fill_quantity / base_rate,
+            #     taker_market.get_available_balance(market_pair.taker.quote_asset) /
+            #     taker_price * self.order_size_taker_balance_factor
+            # )
             quantized_hedge_amount = taker_market.quantize_order_amount(
                 taker_trading_pair,
                 Decimal(hedged_order_quantity)
@@ -1082,8 +1211,10 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
             # Maker buy
             # Taker sell
             maker_balance_in_quote = maker_market.get_available_balance(market_pair.maker.quote_asset)
-            taker_balance = taker_market.get_available_balance(market_pair.taker.base_asset) * \
-                self.order_size_taker_balance_factor
+            taker_balance_in_quote = taker_market.c_get_available_balance(market_pair.taker.quote_asset) * \
+                self._order_size_taker_balance_factor
+            # taker_balance = taker_market.get_available_balance(market_pair.taker.base_asset) * \
+            #     self.order_size_taker_balance_factor
 
             if self.is_gateway_market(market_pair.taker):
                 taker_price = await taker_market.get_order_price(taker_trading_pair,
@@ -1101,7 +1232,8 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
                 except ZeroDivisionError:
                     assert size == s_decimal_zero
                     return s_decimal_zero
-
+            taker_slippage_adjustment_factor = Decimal("1") + self.slippage_buffer
+            taker_balance = taker_balance_in_quote / (taker_price * taker_slippage_adjustment_factor)
             if taker_price is None:
                 self.logger().warning("Failed to obtain a taker sell order price. No order will be submitted.")
                 order_amount = Decimal("0")
@@ -1116,7 +1248,8 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
         else:
             # Maker sell
             # Taker buy
-            maker_balance = maker_market.get_available_balance(market_pair.maker.base_asset)
+            maker_balance_in_quote = maker_market.get_available_balance(market_pair.maker.base_asset)
+            # maker_balance = maker_market.get_available_balance(market_pair.maker.base_asset)
             taker_balance_in_quote = taker_market.get_available_balance(market_pair.taker.quote_asset) * \
                 self.order_size_taker_balance_factor
 
@@ -1136,6 +1269,7 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
                 except ZeroDivisionError:
                     assert size == s_decimal_zero
                     return s_decimal_zero
+                maker_balance = maker_balance_in_quote / taker_price
 
             if taker_price is None:
                 self.logger().warning("Failed to obtain a taker buy order price. No order will be submitted.")
@@ -1175,6 +1309,7 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
         size /= base_rate
 
         top_bid_price, top_ask_price = self.get_top_bid_ask_from_price_samples(market_pair)
+        current_top_bid_price, current_top_ask_price = self.get_top_bid_ask(market_pair)
 
         if is_bid:
             # Maker buy
@@ -1208,13 +1343,13 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
             taker_price *= self.markettaker_to_maker_base_conversion_rate(market_pair)
 
             # you are buying on the maker market and selling on the taker market
-            maker_price = taker_price / (1 + self.min_profitability)
+            maker_price = taker_price / (1 + self._bid_min_profitability)
 
             # # If your bid is higher than highest bid price, reduce it to one tick above the top bid price
             if self.adjust_order_enabled:
                 # If maker bid order book is not empty
                 if not Decimal.is_nan(price_above_bid):
-                    maker_price = min(maker_price, price_above_bid)
+                    maker_price = min(maker_price, price_above_bid, current_top_bid_price)
 
             price_quantum = maker_market.get_order_price_quantum(
                 market_pair.maker.trading_pair,
@@ -1253,13 +1388,13 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
             taker_price *= self.markettaker_to_maker_base_conversion_rate(market_pair)
 
             # You are selling on the maker market and buying on the taker market
-            maker_price = taker_price * (1 + self.min_profitability)
+            maker_price = taker_price * (1 + self._ask_min_profitability)
 
             # If your ask is lower than the the top ask, increase it to just one tick below top ask
             if self.adjust_order_enabled:
                 # If maker ask order book is not empty
                 if not Decimal.is_nan(next_price_below_top_ask):
-                    maker_price = max(maker_price, next_price_below_top_ask)
+                    maker_price = max(maker_price, next_price_below_top_ask, current_top_ask_price)
 
             price_quantum = maker_market.get_order_price_quantum(
                 market_pair.maker.trading_pair,
@@ -1410,12 +1545,12 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
         if not any(Decimal.is_nan(p) for p in bid_price_samples) and not Decimal.is_nan(current_top_bid_price):
             top_bid_price = max(list(bid_price_samples) + [current_top_bid_price])
         else:
-            top_bid_price = current_top_bid_price
+            top_bid_price = current_top_ask_price
 
         if not any(Decimal.is_nan(p) for p in ask_price_samples) and not Decimal.is_nan(current_top_ask_price):
             top_ask_price = min(list(ask_price_samples) + [current_top_ask_price])
         else:
-            top_ask_price = current_top_ask_price
+            top_ask_price = current_top_bid_price
 
         return top_bid_price, top_ask_price
 
@@ -1441,8 +1576,9 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
 
         cancel_order_threshold = self._config_map.order_refresh_mode.get_cancel_order_threshold()
         if cancel_order_threshold.is_nan():
-            cancel_order_threshold = self.min_profitability
-
+            # cancel_order_threshold = self.min_profitability
+            bid_cancel_order_threshold = self._bid_min_profitability
+            ask_cancel_order_threshold = self._ask_min_profitability
         if current_hedging_price is None:
             if LogOption.REMOVING_ORDER in self.logging_options:
                 self.log_with_clock(
@@ -1505,8 +1641,8 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
 
         # Profitability based on a price multiplier (cancel_order_threshold)
         # Profitability based on absolute P/L including fees
-        if ((is_buy and current_hedging_price < order_price * (1 + cancel_order_threshold)) or
-                (not is_buy and order_price < current_hedging_price * (1 + cancel_order_threshold)) or
+        if ((is_buy and current_hedging_price < order_price * (1 + bid_cancel_order_threshold)) or
+                (not is_buy and order_price < current_hedging_price * (1 + ask_cancel_order_threshold)) or
                 pl < 0):
 
             if LogOption.REMOVING_ORDER in self.logging_options:
@@ -1553,7 +1689,8 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
             taker_slippage_adjustment_factor = Decimal("1") - self.slippage_buffer
 
             quote_asset_amount = maker_market.get_balance(market_pair.maker.quote_asset)
-            base_asset_amount = taker_market.get_balance(market_pair.taker.base_asset) * base_rate
+            # base_asset_amount = taker_market.get_balance(market_pair.taker.base_asset) * base_rate
+            base_asset_amount = taker_market.get_balance(market_pair.taker.quote_asset) * quote_rate/ taker_market.get_price(taker_trading_pair,False)* base_rate
 
             order_size_limit = min(base_asset_amount, quote_asset_amount / order_price)
         else:
@@ -1561,7 +1698,9 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
             # Taker buy
             taker_slippage_adjustment_factor = Decimal("1") + self.slippage_buffer
 
-            base_asset_amount = maker_market.get_balance(market_pair.maker.base_asset)
+            # base_asset_amount = maker_market.get_balance(market_pair.maker.base_asset)
+            base_asset_amount = maker_market.get_balance(market_pair.maker.quote_asset) * quote_rate / taker_market.get_price(taker_trading_pair,True)* base_rate
+
             quote_asset_amount = taker_market.get_balance(market_pair.taker.quote_asset)
 
             if self.is_gateway_market(market_pair.taker):
@@ -1623,27 +1762,27 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
         """
 
         # if there is no active bid, place bid again
-        if not has_active_bid:
+        if not has_active_bid and self._opening_position_num <8:
             bid_size = await self.get_market_making_size(market_pair, True)
 
             if bid_size > s_decimal_zero:
                 bid_price = await self.get_market_making_price(market_pair, True, bid_size)
                 if not Decimal.is_nan(bid_price):
-                    effective_hedging_price = await self.calculate_effective_hedging_price(
-                        market_pair,
-                        True,
-                        bid_size
-                    )
-                    effective_hedging_price_adjusted = effective_hedging_price / \
-                        self.markettaker_to_maker_base_conversion_rate(market_pair)
+                    # effective_hedging_price = await self.calculate_effective_hedging_price(
+                    #     market_pair,
+                    #     True,
+                    #     bid_size
+                    # )
+                    # effective_hedging_price_adjusted = effective_hedging_price / \
+                    #     self.markettaker_to_maker_base_conversion_rate(market_pair)
                     if LogOption.CREATE_ORDER in self.logging_options:
                         self.log_with_clock(
                             logging.INFO,
                             f"({market_pair.maker.trading_pair}) Creating limit bid order for "
                             f"{bid_size} {market_pair.maker.base_asset} at "
                             f"{bid_price} {market_pair.maker.quote_asset}. "
-                            f"Current hedging price: {effective_hedging_price:.8f} {market_pair.maker.quote_asset} "
-                            f"(Rate adjusted: {effective_hedging_price_adjusted:.8f} {market_pair.taker.quote_asset})."
+                            # f"Current hedging price: {effective_hedging_price:.8f} {market_pair.maker.quote_asset} "
+                            # f"(Rate adjusted: {effective_hedging_price_adjusted:.8f} {market_pair.taker.quote_asset})."
                         )
                     self.place_order(market_pair, True, True, bid_size, bid_price)
                 else:
@@ -1662,27 +1801,27 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
                         f"bid size is 0. Skipping. Check available balance."
                     )
         # if there is no active ask, place ask again
-        if not has_active_ask:
+        if not has_active_ask and self._opening_position_num >-8:
             ask_size = await self.get_market_making_size(market_pair, False)
 
             if ask_size > s_decimal_zero:
                 ask_price = await self.get_market_making_price(market_pair, False, ask_size)
                 if not Decimal.is_nan(ask_price):
-                    effective_hedging_price = await self.calculate_effective_hedging_price(
-                        market_pair,
-                        False,
-                        ask_size
-                    )
-                    effective_hedging_price_adjusted = effective_hedging_price / \
-                        self.markettaker_to_maker_base_conversion_rate(market_pair)
+                    # effective_hedging_price = await self.calculate_effective_hedging_price(
+                    #     market_pair,
+                    #     False,
+                    #     ask_size
+                    # )
+                    # effective_hedging_price_adjusted = effective_hedging_price / \
+                    #     self.markettaker_to_maker_base_conversion_rate(market_pair)
                     if LogOption.CREATE_ORDER in self.logging_options:
                         self.log_with_clock(
                             logging.INFO,
                             f"({market_pair.maker.trading_pair}) Creating limit ask order for "
                             f"{ask_size} {market_pair.maker.base_asset} at "
                             f"{ask_price} {market_pair.maker.quote_asset}. "
-                            f"Current hedging price: {effective_hedging_price:.8f} {market_pair.maker.quote_asset} "
-                            f"(Rate adjusted: {effective_hedging_price_adjusted:.8f} {market_pair.taker.quote_asset})."
+                            # f"Current hedging price: {effective_hedging_price:.8f} {market_pair.maker.quote_asset} "
+                            # f"(Rate adjusted: {effective_hedging_price_adjusted:.8f} {market_pair.taker.quote_asset})."
                         )
                     self.place_order(market_pair, False, True, ask_size, ask_price)
                 else:
