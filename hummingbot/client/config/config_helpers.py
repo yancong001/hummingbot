@@ -891,6 +891,8 @@ def short_strategy_name(strategy: str) -> str:
         return "pure_mm"
     elif strategy == "cross_exchange_market_making":
         return "xemm"
+    elif strategy == "perp_cross_exchange_market_making":
+        return "perp_xemm"
     elif strategy == "arbitrage":
         return "arb"
     else:

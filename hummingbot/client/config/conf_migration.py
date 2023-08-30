@@ -35,6 +35,10 @@ from hummingbot.strategy.cross_exchange_market_making.cross_exchange_market_maki
     CrossExchangeMarketMakingConfigMap,
 )
 
+from hummingbot.strategy.perp_cross_exchange_market_making.perp_cross_exchange_market_making_config_map_pydantic import (
+    PerpCrossExchangeMarketMakingConfigMap,
+)
+
 encrypted_conf_prefix = "encrypted_"
 encrypted_conf_postfix = ".json"
 conf_dir_path = CONF_DIR_PATH
@@ -282,6 +286,8 @@ def migrate_strategy_confs_paths():
                     errors.extend(migrate_amm_confs(conf, new_path))
                 elif conf["strategy"] == "cross_exchange_market_making":
                     errors.extend(migrate_xemm_confs(conf, new_path))
+                elif conf["strategy"] == "perp_cross_exchange_market_making":
+                    errors.extend(migrate_perp_xemm_confs(conf, new_path))
                 logging.getLogger().info(f"Migrated conf for {conf['strategy']}")
     return errors
 
@@ -359,6 +365,40 @@ def migrate_xemm_confs(conf, new_path) -> List[str]:
         conf.pop("template_version")
     try:
         config_map = ClientConfigAdapter(CrossExchangeMarketMakingConfigMap(**conf))
+        save_to_yml(new_path, config_map)
+        errors = []
+    except Exception as e:
+        logging.getLogger().error(str(e))
+        errors = [str(e)]
+    return errors
+
+def migrate_perp_xemm_confs(conf, new_path) -> List[str]:
+    if "active_order_canceling" in conf:
+        if conf["active_order_canceling"]:
+            conf["order_refresh_mode"] = {}
+        else:
+            conf["order_refresh_mode"] = {
+                "cancel_order_threshold": conf["cancel_order_threshold"],
+                "limit_order_min_expiration": conf["limit_order_min_expiration"]
+            }
+        conf.pop("active_order_canceling")
+        conf.pop("cancel_order_threshold")
+        conf.pop("limit_order_min_expiration")
+    if "use_oracle_conversion_rate" in conf:
+        if conf["use_oracle_conversion_rate"]:
+            conf["conversion_rate_mode"] = {}
+        else:
+            conf["conversion_rate_mode"] = {
+                "taker_to_maker_base_conversion_rate": conf["taker_to_maker_base_conversion_rate"],
+                "taker_to_maker_quote_conversion_rate": conf["taker_to_maker_quote_conversion_rate"]
+            }
+        conf.pop("use_oracle_conversion_rate")
+        conf.pop("taker_to_maker_base_conversion_rate")
+        conf.pop("taker_to_maker_quote_conversion_rate")
+    if "template_version" in conf:
+        conf.pop("template_version")
+    try:
+        config_map = ClientConfigAdapter(PerpCrossExchangeMarketMakingConfigMap(**conf))
         save_to_yml(new_path, config_map)
         errors = []
     except Exception as e:
