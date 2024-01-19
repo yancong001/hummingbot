@@ -2,7 +2,6 @@ from decimal import Decimal
 from hummingbot.core.data_type.common import PriceType
 
 from hummingbot.data_feed.custom_api_data_feed import CustomAPIDataFeed, NetworkStatus
-from hummingbot.strategy.asset_price_delegate cimport AssetPriceDelegate
 
 class WtCustomAPIDataFeed(CustomAPIDataFeed):
     def __init__(self, api_url, update_interval: float = 5.0):
@@ -18,7 +17,7 @@ class WtCustomAPIDataFeed(CustomAPIDataFeed):
             self._price = Decimal(str(resp_json))
         self._ready_event.set()
 
-cdef class WtAPIAssetPriceDelegate(AssetPriceDelegate):
+class WtAPIAssetPriceDelegate():
     def __init__(self, market, api_url: str, update_interval: float = 5.0):
         super().__init__()
         self._market = market
@@ -26,9 +25,6 @@ cdef class WtAPIAssetPriceDelegate(AssetPriceDelegate):
         self._custom_api_feed.start()
 
     def get_price_by_type(self, _: PriceType) -> Decimal:
-        return self.c_get_mid_price()
-
-    cdef object c_get_mid_price(self):
         return self._custom_api_feed.get_price()
 
     @property
@@ -36,7 +32,7 @@ cdef class WtAPIAssetPriceDelegate(AssetPriceDelegate):
         return self._custom_api_feed.network_status == NetworkStatus.CONNECTED
 
     @property
-    def market(self) -> ExchangeBase:
+    def market(self):
         return self._market
 
     @property
