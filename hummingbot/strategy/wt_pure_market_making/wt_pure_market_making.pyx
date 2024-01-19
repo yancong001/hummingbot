@@ -5,6 +5,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+import random
 
 from hummingbot.connector.exchange_base import ExchangeBase
 from hummingbot.connector.exchange_base cimport ExchangeBase
@@ -156,7 +157,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         self._ask_order_level_spreads=ask_order_level_spreads
         self._cancel_timestamp = 0
         self._create_timestamp = 0
-        self._limit_order_type = self._market_info.market.get_maker_order_type()
+        self._limit_order_type = OrderType.LIMIT
         if take_if_crossed:
             self._limit_order_type = OrderType.LIMIT
         self._all_markets_ready = False
@@ -771,15 +772,17 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                     )
                     self._all_listener_ready = True
                 else:
-                    if self.OPTION_LOG_STATUS_REPORT:
-                        self.logger().info(f"Order_book_trade_listener are ready. ")
+                    self.logger().info(f"Order_book_trade_listener are ready. ")
 
             proposal = None
             wash_trade_proposal = None
             if self._create_timestamp <= self._current_timestamp:
+
                 # wash_trade
                 wash_trade_proposal = self.c_create_wash_trading_proposal()
                 self.c_apply_wash_trade_budget_constraint(wash_trade_proposal)
+                if self.c_to_create_orders(wash_trade_proposal):
+                    self.c_execute_orders_proposal(wash_trade_proposal)
 
                 # 1. Create base order proposals
                 proposal = self.c_create_base_proposal()
@@ -794,9 +797,6 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
                 if not self._take_if_crossed:
                     self.c_filter_out_takers(proposal)
-            # wash_trade
-            if self.c_to_create_orders(wash_trade_proposal):
-                self.c_execute_orders_proposal(wash_trade_proposal)
 
             self._hanging_orders_tracker.process_tick()
 
@@ -817,10 +817,12 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         buy_reference_price = sell_reference_price = self.get_price()
         bid, ask = self.c_get_top_bid_ask()
         current_price_difference = (ask-bid)/bid
-        if buy_reference_price > bid and buy_reference_price < ask and \
+        wash_trade_price = buy_reference_price * Decimal(
+            str(random.uniform(1, float(self._wash_trade_price_upper_factor))))
+
+        if wash_trade_price > bid and wash_trade_price < ask and \
                 self._orderbook_trade_volumn >= 10 and \
                 current_price_difference >= self._minimum_price_difference:
-            wash_trade_price = buy_reference_price * self._wash_trade_price_upper_factor
 
         # First to check if a customized order override is configured, otherwise the proposal will be created according
         # to order spread, amount, and levels setting.
@@ -838,6 +840,20 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                 size = market.c_quantize_order_amount(self.trading_pair, size)
                 if size > 0:
                     sells.append(PriceSize(price, size))
+
+            self.logger().info(f"Wash trading!,"
+                           f"buy_reference_price is {buy_reference_price}, "
+                           f"wash_trade_price is {wash_trade_price}, "
+                           f"top price is {(bid, ask)}, "
+                           f"_orderbook_trade_volumn is {self._orderbook_trade_volumn}, "
+                           f"current_price_difference is {current_price_difference}")
+        else:
+            self.logger().info(f"can not do wash trade,"
+                               f"buy_reference_price is {buy_reference_price}, "
+                               f"wash_trade_price is {wash_trade_price}, "
+                               f"top price is {(bid, ask)}, "
+                               f"_orderbook_trade_volumn is {self._orderbook_trade_volumn}, "
+                               f"current_price_difference is {current_price_difference}")
 
         return Proposal(buys, sells)
 
@@ -1037,10 +1053,9 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
             # Adjust buy order size to use remaining balance if less than the order amount
             if quote_balance < quote_size:
-                adjusted_amount = quote_balance / (buy.price * (Decimal("1") + buy_fee.percent))
-                adjusted_amount = market.c_quantize_order_amount(self.trading_pair, adjusted_amount)
-                buy.size = adjusted_amount
-                quote_balance = s_decimal_zero
+                # adjusted_amount = quote_balance / (buy.price * (Decimal("1") + buy_fee.percent))
+                # adjusted_amount = market.c_quantize_order_amount(self.trading_pair, adjusted_amount)
+                buy.size = 0
             elif quote_balance == s_decimal_zero:
                 buy.size = s_decimal_zero
             else:
@@ -1053,9 +1068,9 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
             # Adjust sell order size to use remaining balance if less than the order amount
             if base_balance < base_size:
-                adjusted_amount = market.c_quantize_order_amount(self.trading_pair, base_balance)
-                sell.size = adjusted_amount
-                base_balance = s_decimal_zero
+                # adjusted_amount = market.c_quantize_order_amount(self.trading_pair, base_balance)
+                sell.size = 0
+                # base_balance = s_decimal_zero
             elif base_balance == s_decimal_zero:
                 sell.size = s_decimal_zero
             else:
@@ -1200,11 +1215,6 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         cdef:
             object orderbook_price = order_book_trade_event.price
             object orderbook_amount = order_book_trade_event.amount
-            object orderbook_type = order_book_trade_event.type
-            object market_pair = list(self._market_pairs.values())[0]
-            list active_limit_orders = self.active_limit_orders
-            object order_price
-            object hedge_amount
             LimitOrder limit_order
         self._orderbook_trade_volumn = orderbook_price * orderbook_amount
 
