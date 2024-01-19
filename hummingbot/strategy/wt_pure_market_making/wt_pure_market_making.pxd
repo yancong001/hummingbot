@@ -88,6 +88,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
     cdef c_cancel_orders_below_min_spread(self)
     cdef c_cancel_active_orders_on_max_age_limit(self)
     cdef bint c_to_create_orders(self, object proposal)
+    cdef bint c_to_create_wash_trade_orders(self, object proposal)
     cdef c_execute_orders_proposal(self, object proposal)
     cdef set_timers(self)
     cdef c_apply_moving_price_band(self, object proposal)

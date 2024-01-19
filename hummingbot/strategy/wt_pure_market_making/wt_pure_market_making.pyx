@@ -781,7 +781,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                 # wash_trade
                 wash_trade_proposal = self.c_create_wash_trading_proposal()
                 self.c_apply_wash_trade_budget_constraint(wash_trade_proposal)
-                if self.c_to_create_orders(wash_trade_proposal):
+                if self.c_to_create_wash_trade_orders(wash_trade_proposal):
                     self.c_execute_orders_proposal(wash_trade_proposal)
 
                 # 1. Create base order proposals
@@ -1055,6 +1055,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
             if quote_balance < quote_size:
                 # adjusted_amount = quote_balance / (buy.price * (Decimal("1") + buy_fee.percent))
                 # adjusted_amount = market.c_quantize_order_amount(self.trading_pair, adjusted_amount)
+                self.logger().info(f"quote_balance {quote_balance} is lower than quote_size {quote_size}")
                 buy.size = 0
             elif quote_balance == s_decimal_zero:
                 buy.size = s_decimal_zero
@@ -1071,6 +1072,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                 # adjusted_amount = market.c_quantize_order_amount(self.trading_pair, base_balance)
                 sell.size = 0
                 # base_balance = s_decimal_zero
+                self.logger().info(f"base_balance {base_balance} is lower than base_size {base_size}")
             elif base_balance == s_decimal_zero:
                 sell.size = s_decimal_zero
             else:
@@ -1078,7 +1080,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
         proposal.sells = [o for o in proposal.sells if o.size > 0]
         if proposal.sells and proposal.buys:
-            pass
+            self.logger().info(f"Passed the balance check")
         else:
             proposal.sells = proposal.buys = []
 
@@ -1410,6 +1412,14 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                      len(self._sb_order_tracker.in_flight_cancels) == 0)
                 and proposal is not None
                 and len(non_hanging_orders_non_cancelled) == 0)
+
+    cdef bint c_to_create_wash_trade_orders(self, object proposal):
+        non_hanging_orders_non_cancelled = [o for o in self.active_non_hanging_orders if not
+                                            self._hanging_orders_tracker.is_potential_hanging_order(o)]
+        return (self._create_timestamp < self._current_timestamp
+                and (not self._should_wait_order_cancel_confirmation or
+                     len(self._sb_order_tracker.in_flight_cancels) == 0)
+                and proposal is not None)
 
     cdef c_execute_orders_proposal(self, object proposal):
         cdef:
