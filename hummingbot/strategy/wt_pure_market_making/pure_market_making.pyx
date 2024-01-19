@@ -779,7 +779,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
             if self._create_timestamp <= self._current_timestamp:
                 # 1. Create base order proposals
                 wash_trade_proposal = self.c_create_wash_trading_proposal()
-                self.c_apply_budget_constraint(wash_trade_proposal)
+                self.c_apply_wash_trade_budget_constraint(wash_trade_proposal)
 
                 proposal = self.c_create_base_proposal()
                 # 2. Apply functions that limit numbers of buys and sells proposal
@@ -1019,6 +1019,53 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                            if not self._hanging_orders_tracker.is_order_id_in_hanging_orders(order.client_order_id)]
         all_non_hanging_orders = list(set(non_hanging) - set(candidate_hanging_orders))
         return self.c_get_adjusted_available_balance(all_non_hanging_orders)
+
+    cdef c_apply_wash_trade_budget_constraint(self, object proposal):
+        cdef:
+            ExchangeBase market = self._market_info.market
+            object quote_size
+            object base_size
+            object adjusted_amount
+
+        base_balance, quote_balance = self.adjusted_available_balance_for_orders_budget_constrain()
+
+        for buy in proposal.buys:
+            buy_fee = market.c_get_fee(self.base_asset, self.quote_asset, OrderType.LIMIT, TradeType.BUY,
+                                       buy.size, buy.price)
+            quote_size = buy.size * buy.price * (Decimal(1) + buy_fee.percent)
+
+            # Adjust buy order size to use remaining balance if less than the order amount
+            if quote_balance < quote_size:
+                adjusted_amount = quote_balance / (buy.price * (Decimal("1") + buy_fee.percent))
+                adjusted_amount = market.c_quantize_order_amount(self.trading_pair, adjusted_amount)
+                buy.size = adjusted_amount
+                quote_balance = s_decimal_zero
+            elif quote_balance == s_decimal_zero:
+                buy.size = s_decimal_zero
+            else:
+                quote_balance -= quote_size
+
+        proposal.buys = [o for o in proposal.buys if o.size > 0]
+
+        for sell in proposal.sells:
+            base_size = sell.size
+
+            # Adjust sell order size to use remaining balance if less than the order amount
+            if base_balance < base_size:
+                adjusted_amount = market.c_quantize_order_amount(self.trading_pair, base_balance)
+                sell.size = adjusted_amount
+                base_balance = s_decimal_zero
+            elif base_balance == s_decimal_zero:
+                sell.size = s_decimal_zero
+            else:
+                base_balance -= base_size
+
+        proposal.sells = [o for o in proposal.sells if o.size > 0]
+        if proposal.sells and proposal.buys:
+            pass
+        else:
+            proposal.sells = proposal.buys = []
+
 
     cdef c_apply_budget_constraint(self, object proposal):
         cdef:
