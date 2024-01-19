@@ -9,7 +9,7 @@ from hummingbot.strategy.market_trading_pair_tuple import MarketTradingPairTuple
 from hummingbot.strategy.order_book_asset_price_delegate import OrderBookAssetPriceDelegate
 from hummingbot.strategy.wt_pure_market_making import InventoryCostPriceDelegate, WtPureMarketMakingStrategy
 from hummingbot.strategy.wt_pure_market_making.moving_price_band import MovingPriceBand
-from hummingbot.strategy.wt_pure_market_making.wt_api_asset_pricec_delegate import WtAPIAssetPriceDelegate
+from hummingbot.strategy.wt_pure_market_making.wt_api_asset_price_delegate import WtAPIAssetPriceDelegate
 from hummingbot.strategy.wt_pure_market_making.wt_pure_market_making_config_map import wt_pure_market_making_config_map as c_map
 
 
@@ -103,8 +103,8 @@ def start(self):
 
         should_wait_order_cancel_confirmation = c_map.get("should_wait_order_cancel_confirmation")
 
-        strategy_logging_options = PureMarketMakingStrategy.OPTION_LOG_ALL
-        self.strategy = PureMarketMakingStrategy()
+        strategy_logging_options = WtPureMarketMakingStrategy.OPTION_LOG_ALL
+        self.strategy = WtPureMarketMakingStrategy()
         self.strategy.init_params(
             market_info=MarketTradingPairTuple(*maker_data),
             bid_spread=bid_spread,

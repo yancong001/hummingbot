@@ -122,7 +122,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         self._order_amount = order_amount
         self._wash_trade_price_upper_factor = wash_trade_price_upper_factor
         self._minimum_price_difference = minimum_price_difference
-        self._orderbook_trade_volumn = Decimal("0")
+        self._orderbook_trade_volumn = Decimal("10")
         self._order_levels = order_levels
         self._buy_levels = order_levels
         self._sell_levels = order_levels
@@ -839,7 +839,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                 if size > 0:
                     sells.append(PriceSize(price, size))
 
-            return Proposal(buys, sells)
+        return Proposal(buys, sells)
 
     cdef tuple c_get_top_bid_ask(self):
         """
