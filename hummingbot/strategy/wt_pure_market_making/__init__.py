@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
-from .pure_market_making import PureMarketMakingStrategy
+from .wt_pure_market_making import WtPureMarketMakingStrategy
 from .inventory_cost_price_delegate import InventoryCostPriceDelegate
 __all__ = [
-    PureMarketMakingStrategy,
+    WtPureMarketMakingStrategy,
     InventoryCostPriceDelegate,
 ]

@@ -6,7 +6,7 @@ from hummingbot.strategy.strategy_base cimport StrategyBase
 from hummingbot.core.event.event_listener cimport EventListener
 
 
-cdef class PureMarketMakingStrategy(StrategyBase):
+cdef class WtPureMarketMakingStrategy(StrategyBase):
     cdef:
         object _market_info
 
