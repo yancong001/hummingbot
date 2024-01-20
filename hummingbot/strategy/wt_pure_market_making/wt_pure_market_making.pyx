@@ -157,7 +157,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         self._ask_order_level_spreads=ask_order_level_spreads
         self._cancel_timestamp = 0
         self._create_timestamp = 0
-        self._limit_order_type = OrderType.LIMIT
+        self._limit_order_type = self._market_info.market.get_maker_order_type()
         if take_if_crossed:
             self._limit_order_type = OrderType.LIMIT
         self._all_markets_ready = False
@@ -172,6 +172,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         self._should_wait_order_cancel_confirmation = should_wait_order_cancel_confirmation
         self._moving_price_band = moving_price_band
         self._all_listener_ready = False
+        self._wash_trade_created_tag = False
         self.c_add_markets([market_info.market])
 
 
@@ -797,14 +798,14 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
                 if not self._take_if_crossed:
                     self.c_filter_out_takers(proposal)
+            if not self._wash_trade_created_tag:
+                self._hanging_orders_tracker.process_tick()
 
-            self._hanging_orders_tracker.process_tick()
-
-            self.c_cancel_active_orders_on_max_age_limit()
-            self.c_cancel_active_orders(proposal)
-            self.c_cancel_orders_below_min_spread()
-            if self.c_to_create_orders(proposal):
-                self.c_execute_orders_proposal(proposal)
+                self.c_cancel_active_orders_on_max_age_limit()
+                self.c_cancel_active_orders(proposal)
+                self.c_cancel_orders_below_min_spread()
+                if self.c_to_create_orders(proposal):
+                    self.c_execute_orders_proposal(proposal)
         finally:
             self._last_timestamp = timestamp
 
@@ -826,20 +827,21 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
         # First to check if a customized order override is configured, otherwise the proposal will be created according
         # to order spread, amount, and levels setting.
-            if not buy_reference_price.is_nan():
+
+            if not buy_reference_price.is_nan() and not self._wash_trade_created_tag:
                 price = wash_trade_price
                 price = market.c_quantize_order_price(self.trading_pair, price)
                 size = self._order_amount
                 size = market.c_quantize_order_amount(self.trading_pair, size)
                 if size > 0:
                     buys.append(PriceSize(price, size))
-            if not sell_reference_price.is_nan():
-                price = market.c_quantize_order_price(self.trading_pair, price)
-                price = market.c_quantize_order_price(self.trading_pair, price)
-                size = self._order_amount
-                size = market.c_quantize_order_amount(self.trading_pair, size)
-                if size > 0:
-                    sells.append(PriceSize(price, size))
+            # if not sell_reference_price.is_nan() and self._wash_trade_created_tag:
+            #     price = market.c_quantize_order_price(self.trading_pair, price)
+            #     price = market.c_quantize_order_price(self.trading_pair, price)
+            #     size = self._order_amount
+            #     size = market.c_quantize_order_amount(self.trading_pair, size)
+            #     if size > 0:
+            #         sells.append(PriceSize(price, size))
 
             self.logger().info(f"Wash trading!,"
                            f"buy_reference_price is {buy_reference_price}, "
@@ -1052,7 +1054,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
             quote_size = buy.size * buy.price * (Decimal(1) + buy_fee.percent)
 
             # Adjust buy order size to use remaining balance if less than the order amount
-            if quote_balance < quote_size:
+            if quote_balance < quote_size or base_balance < buy.size:
                 # adjusted_amount = quote_balance / (buy.price * (Decimal("1") + buy_fee.percent))
                 # adjusted_amount = market.c_quantize_order_amount(self.trading_pair, adjusted_amount)
                 self.logger().info(f"quote_balance {quote_balance} is lower than quote_size {quote_size}")
@@ -1079,10 +1081,10 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                 base_balance -= base_size
 
         proposal.sells = [o for o in proposal.sells if o.size > 0]
-        if proposal.sells and proposal.buys:
+        if proposal.sells or proposal.buys:
             self.logger().info(f"Passed the balance check")
-        else:
-            proposal.sells = proposal.buys = []
+        # else:
+        #     proposal.sells = proposal.buys = []
 
 
     cdef c_apply_budget_constraint(self, object proposal):
@@ -1223,6 +1225,13 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
     def did_order_book_trade_order(self, order_book_trade_event):
         self.c_did_order_book_trade_order(order_book_trade_event)
 
+    cdef c_did_fail_order(self, object order_failed_event):
+        cdef:
+            str order_id = order_failed_event.order_id
+            object order_type = order_failed_event.order_type
+        if self._wash_trade_created_tag and order_type == OrderType.LIMIT_MAKER:
+            self._wash_trade_created_tag = False
+
     cdef c_did_fill_order(self, object order_filled_event):
         cdef:
             str order_id = order_filled_event.order_id
@@ -1250,6 +1259,28 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
             if self._inventory_cost_price_delegate is not None:
                 self._inventory_cost_price_delegate.process_order_fill_event(order_filled_event)
+
+    cdef c_did_create_buy_order(self, object order_created_event):
+        cdef:
+            object wash_price = order_created_event.price
+            object wash_amount = order_created_event.amount
+            list sells = []
+
+        if self._wash_trade_created_tag:
+            # hedge
+            sells.append(PriceSize(wash_price, wash_amount))
+            wash_trade_proposal = Proposal([], sells)
+            # self.c_execute_orders_proposal(wash_trade_proposal)
+            for idx, sell in enumerate(wash_trade_proposal.sells):
+                ask_order_id = self.c_sell_with_specific_market(
+                    self._market_info,
+                    sell.size,
+                    order_type=OrderType.LIMIT,
+                    price=wash_price * Decimal("0.8"),
+                    expiration_seconds=NaN
+                )
+            # self._wash_trade_created_tag = False
+
 
     cdef c_did_complete_buy_order(self, object order_completed_event):
         cdef:
@@ -1298,6 +1329,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
             LimitOrder limit_order_record = self._sb_order_tracker.c_get_limit_order(self._market_info, order_id)
         if limit_order_record is None:
             return
+        if self._wash_trade_created_tag:
+            self._wash_trade_created_tag = False
         active_buy_ids = [x.client_order_id for x in self.active_orders if x.is_buy]
         if self._hanging_orders_enabled:
             # If the filled order is a hanging order, do nothing
@@ -1414,12 +1447,22 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                 and len(non_hanging_orders_non_cancelled) == 0)
 
     cdef bint c_to_create_wash_trade_orders(self, object proposal):
-        non_hanging_orders_non_cancelled = [o for o in self.active_non_hanging_orders if not
-                                            self._hanging_orders_tracker.is_potential_hanging_order(o)]
-        return (self._create_timestamp < self._current_timestamp
+        cdef:
+            list active_orders = self.active_non_hanging_orders
+
+        if (self._create_timestamp < self._current_timestamp
                 and (not self._should_wait_order_cancel_confirmation or
                      len(self._sb_order_tracker.in_flight_cancels) == 0)
-                and proposal is not None)
+                and proposal is not None):
+            if len(proposal.buys) > 0:
+                self._hanging_orders_tracker.update_strategy_orders_with_equivalent_orders()
+                if len(active_orders) > 0:
+                    for order in self.active_non_hanging_orders:
+                        # If is about to be added to hanging_orders then don't cancel
+                        if not self._hanging_orders_tracker.is_potential_hanging_order(order):
+                            self.c_cancel_order(self._market_info, order.client_order_id)
+                self._wash_trade_created_tag = True
+            return True
 
     cdef c_execute_orders_proposal(self, object proposal):
         cdef:

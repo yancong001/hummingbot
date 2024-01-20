@@ -63,6 +63,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
         object _moving_price_band
         bint _all_listener_ready
+        bint _wash_trade_created_tag
         EventListener _order_book_trade_listener
 
     cdef object c_get_mid_price(self)
