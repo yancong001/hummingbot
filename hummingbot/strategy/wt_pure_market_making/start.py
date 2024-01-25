@@ -24,6 +24,8 @@ def start(self):
     try:
         order_amount = c_map.get("order_amount").value
         wash_trade_price_upper_factor = c_map.get("wash_trade_price_upper_factor").value
+        wash_trade_amount_upper_factor = c_map.get("wash_trade_amount_upper_factor").value
+        filled_order_delay_upper_factor = c_map.get("filled_order_delay_upper_factor").value
         minimum_price_difference = c_map.get("minimum_price_difference").value
         order_refresh_time = c_map.get("order_refresh_time").value
         max_order_age = c_map.get("max_order_age").value
@@ -112,6 +114,8 @@ def start(self):
             order_levels=order_levels,
             order_amount=order_amount,
             wash_trade_price_upper_factor=wash_trade_price_upper_factor,
+            wash_trade_amount_upper_factor=wash_trade_amount_upper_factor,
+            filled_order_delay_upper_factor=filled_order_delay_upper_factor,
             minimum_price_difference=minimum_price_difference,
             order_level_spread=order_level_spread,
             order_level_amount=order_level_amount,

@@ -188,6 +188,20 @@ wt_pure_market_making_config_map = {
                   default=Decimal("1.2"),
                   validator=lambda v: validate_decimal(v, min_value=Decimal("0"), inclusive=False),
                   prompt_on_new=True),
+    "wash_trade_amount_upper_factor":
+        ConfigVar(key="wash_trade_amount_upper_factor",
+                  prompt=f"What is the highest percentage factor you want? >>> ",
+                  type_str="decimal",
+                  default=Decimal("1.6"),
+                  validator=lambda v: validate_decimal(v, min_value=Decimal("0"), inclusive=False),
+                  prompt_on_new=True),
+    "filled_order_delay_upper_factor":
+        ConfigVar(key="filled_order_delay_upper_factor",
+                  prompt=f"What is the highest percentage factor you want? >>> ",
+                  type_str="decimal",
+                  default=Decimal("1.6"),
+                  validator=lambda v: validate_decimal(v, min_value=Decimal("0"), inclusive=False),
+                  prompt_on_new=True),
     "minimum_price_difference":
         ConfigVar(key="wash_trade_price_upper_factor",
                   prompt=f"What is the minimum_price_difference you want? >>> ",

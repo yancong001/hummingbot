@@ -74,6 +74,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                     ask_spread: Decimal,
                     order_amount: Decimal,
                     wash_trade_price_upper_factor: Decimal = 1.2,
+                    wash_trade_amount_upper_factor: Decimal = 1.6,
+                    filled_order_delay_upper_factor: Decimal = 1.6,
                     minimum_price_difference: Decimal = 0.0005,
                     order_levels: int = 1,
                     order_level_spread: Decimal = s_decimal_zero,
@@ -122,6 +124,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         self._minimum_spread = minimum_spread
         self._order_amount = order_amount
         self._wash_trade_price_upper_factor = wash_trade_price_upper_factor
+        self._wash_trade_amount_upper_factor = wash_trade_amount_upper_factor
+        self._filled_order_delay_upper_factor = filled_order_delay_upper_factor
         self._minimum_price_difference = minimum_price_difference
         self._orderbook_trade_volumn = Decimal("10")
         self._order_levels = order_levels
@@ -831,7 +835,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
             if not buy_reference_price.is_nan() and not self._wash_trade_created_tag:
                 price = wash_trade_price
                 price = market.c_quantize_order_price(self.trading_pair, price)
-                size = self._order_amount
+                size = self._order_amount * Decimal(
+            str(random.uniform(1, float(self._wash_trade_amount_upper_factor))))
                 size = market.c_quantize_order_amount(self.trading_pair, size)
                 if size > 0:
                     buys.append(PriceSize(price, size))
@@ -1306,7 +1311,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                 return
 
         # delay order creation by filled_order_dalay (in seconds)
-        self._create_timestamp = self._current_timestamp + self._filled_order_delay
+        self._create_timestamp = self._current_timestamp + self._filled_order_delay * random.uniform(1, float(self._filled_order_delay_upper_factor))
         self._cancel_timestamp = min(self._cancel_timestamp, self._create_timestamp)
 
         self._filled_buys_balance += 1
@@ -1348,7 +1353,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                 return
 
         # delay order creation by filled_order_dalay (in seconds)
-        self._create_timestamp = self._current_timestamp + self._filled_order_delay
+        self._create_timestamp = self._current_timestamp + self._filled_order_delay  * random.uniform(1, float(self._filled_order_delay_upper_factor))
         self._cancel_timestamp = min(self._cancel_timestamp, self._create_timestamp)
 
         self._filled_sells_balance += 1

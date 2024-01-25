@@ -83,6 +83,9 @@ class BitfinexAPIOrderBookDataSource(OrderBookTrackerDataSource):
         # way it is stored in Hummingbot order book, usually timestamp)
         self._tracked_book_entries: Dict[int, OrderBookRow] = {}
 
+    async def listen_for_subscriptions(self):
+        pass
+
     @staticmethod
     async def fetch_trading_pairs() -> List[str]:
         try:

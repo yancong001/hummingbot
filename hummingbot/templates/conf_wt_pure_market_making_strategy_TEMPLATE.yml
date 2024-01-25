@@ -44,6 +44,12 @@ order_amount: null
 # A random number between 1 and this number, used for the price
 wash_trade_price_upper_factor: null
 
+# A random number between 1 and this number, used for the amount
+wash_trade_amount_upper_factor: null
+
+# A random number between 1 and this number, used for the wash_trade_order_refresh_time
+filled_order_delay_upper_factor: null
+
 # Minimum basis point difference between the best bid and ask price
 minimum_price_difference: null
 

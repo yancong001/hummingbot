@@ -15,6 +15,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         object _minimum_spread
         object _order_amount
         object _wash_trade_price_upper_factor
+        object _wash_trade_amount_upper_factor
+        object _filled_order_delay_upper_factor
         object _minimum_price_difference
         object _orderbook_trade_volumn
         int _order_levels
