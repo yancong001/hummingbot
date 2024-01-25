@@ -203,7 +203,7 @@ wt_pure_market_making_config_map = {
                   validator=lambda v: validate_decimal(v, min_value=Decimal("0"), inclusive=False),
                   prompt_on_new=True),
     "minimum_price_difference":
-        ConfigVar(key="wash_trade_price_upper_factor",
+        ConfigVar(key="minimum_price_difference",
                   prompt=f"What is the minimum_price_difference you want? >>> ",
                   type_str="decimal",
                   default=Decimal("0.0005"),
