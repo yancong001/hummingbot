@@ -1234,7 +1234,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         cdef:
             str order_id = order_failed_event.order_id
             object order_type = order_failed_event.order_type
-        if self._wash_trade_created_tag and order_type == OrderType.LIMIT_MAKER:
+        if self._wash_trade_created_tag:
             self._wash_trade_created_tag = False
 
     cdef c_did_fill_order(self, object order_filled_event):
@@ -1281,7 +1281,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                     self._market_info,
                     sell.size,
                     order_type=OrderType.LIMIT,
-                    price=wash_price * Decimal("0.8"),
+                    price=wash_price,
                     expiration_seconds=NaN
                 )
             # self._wash_trade_created_tag = False
@@ -1291,8 +1291,15 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         cdef:
             str order_id = order_completed_event.order_id
             limit_order_record = self._sb_order_tracker.c_get_limit_order(self._market_info, order_id)
+            list active_orders = self.market_info_to_active_orders.get(self._market_info, [])
+
         if limit_order_record is None:
             return
+
+        if self._wash_trade_created_tag:
+            self._wash_trade_created_tag = False
+            for order in self.active_orders:
+                self.c_cancel_order(self._market_info, order.client_order_id)
         active_sell_ids = [x.client_order_id for x in self.active_orders if not x.is_buy]
 
         if self._hanging_orders_enabled:
