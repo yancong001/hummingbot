@@ -1648,8 +1648,6 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                         order = next((o for o in self.active_orders if o.client_order_id == ask_order_id))
                         if order:
                             self._hanging_orders_tracker.current_created_pairs_of_orders[idx].sell_order = order
-        if orders_created:
-            self.set_timers()
 
     cdef c_execute_orders_proposal(self, object proposal):
         cdef:
