@@ -23,10 +23,14 @@ def start(self):
 
     try:
         order_amount = c_map.get("order_amount").value
+        wash_trade_enabled = c_map.get("wash_trade_enabled").value
+        wash_trade_order_amount = c_map.get("wash_trade_order_amount").value
+        sell_first = c_map.get("sell_first").value
         wash_trade_price_upper_factor = c_map.get("wash_trade_price_upper_factor").value
         wash_trade_amount_upper_factor = c_map.get("wash_trade_amount_upper_factor").value
         filled_order_delay_upper_factor = c_map.get("filled_order_delay_upper_factor").value
         minimum_price_difference = c_map.get("minimum_price_difference").value
+        last_traded_size_condition = c_map.get("last_traded_size_condition").value
         order_refresh_time = c_map.get("order_refresh_time").value
         max_order_age = c_map.get("max_order_age").value
         bid_spread = c_map.get("bid_spread").value / Decimal('100')
@@ -113,10 +117,14 @@ def start(self):
             ask_spread=ask_spread,
             order_levels=order_levels,
             order_amount=order_amount,
+            wash_trade_enabled=wash_trade_enabled,
+            wash_trade_order_amount=wash_trade_order_amount,
+            sell_first=sell_first,
             wash_trade_price_upper_factor=wash_trade_price_upper_factor,
             wash_trade_amount_upper_factor=wash_trade_amount_upper_factor,
             filled_order_delay_upper_factor=filled_order_delay_upper_factor,
             minimum_price_difference=minimum_price_difference,
+            last_traded_size_condition=last_traded_size_condition,
             order_level_spread=order_level_spread,
             order_level_amount=order_level_amount,
             inventory_skew_enabled=inventory_skew_enabled,

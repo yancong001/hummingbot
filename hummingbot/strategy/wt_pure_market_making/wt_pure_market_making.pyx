@@ -43,7 +43,6 @@ s_decimal_zero = Decimal(0)
 s_decimal_neg_one = Decimal(-1)
 pmm_logger = None
 
-
 cdef class OrderBookTradeListener(EventListener):
     cdef:
         StrategyBase _owner
@@ -73,10 +72,14 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                     bid_spread: Decimal,
                     ask_spread: Decimal,
                     order_amount: Decimal,
+                    wash_trade_enabled: bool = False,
+                    wash_trade_order_amount: Decimal,
+                    sell_first: bool = True,
                     wash_trade_price_upper_factor: Decimal = 1.2,
                     wash_trade_amount_upper_factor: Decimal = 1.6,
                     filled_order_delay_upper_factor: Decimal = 1.6,
                     minimum_price_difference: Decimal = 0.0005,
+                    last_traded_size_condition: Decimal = 10,
                     order_levels: int = 1,
                     order_level_spread: Decimal = s_decimal_zero,
                     order_level_amount: Decimal = s_decimal_zero,
@@ -122,12 +125,15 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         self._bid_spread = bid_spread
         self._ask_spread = ask_spread
         self._minimum_spread = minimum_spread
+        self._wash_trade_enabled = wash_trade_enabled
         self._order_amount = order_amount
+        self._wash_trade_order_amount = wash_trade_order_amount
+        self._sell_first = sell_first
         self._wash_trade_price_upper_factor = wash_trade_price_upper_factor
         self._wash_trade_amount_upper_factor = wash_trade_amount_upper_factor
         self._filled_order_delay_upper_factor = filled_order_delay_upper_factor
         self._minimum_price_difference = minimum_price_difference
-        self._orderbook_trade_volumn = Decimal("10")
+        self._last_traded_size_condition = last_traded_size_condition
         self._order_levels = order_levels
         self._buy_levels = order_levels
         self._sell_levels = order_levels
@@ -156,9 +162,9 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         self._ping_pong_warning_lines = []
         self._hb_app_notification = hb_app_notification
         self._order_override = order_override
-        self._split_order_levels_enabled=split_order_levels_enabled
-        self._bid_order_level_spreads=bid_order_level_spreads
-        self._ask_order_level_spreads=ask_order_level_spreads
+        self._split_order_levels_enabled = split_order_levels_enabled
+        self._bid_order_level_spreads = bid_order_level_spreads
+        self._ask_order_level_spreads = ask_order_level_spreads
         self._cancel_timestamp = 0
         self._create_timestamp = 0
         self._limit_order_type = self._market_info.market.get_maker_order_type()
@@ -177,8 +183,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         self._moving_price_band = moving_price_band
         self._all_listener_ready = False
         self._wash_trade_created_tag = False
+        self._last_traded_size = Decimal("10")
         self.c_add_markets([market_info.market])
-
 
     def all_markets_ready(self):
         return all([market.ready for market in self._sb_markets])
@@ -226,6 +232,22 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
     @order_amount.setter
     def order_amount(self, value: Decimal):
         self._order_amount = value
+
+    @property
+    def wash_trade_order_amount(self) -> Decimal:
+        return self._wash_trade_order_amount
+
+    @wash_trade_order_amount.setter
+    def wash_trade_order_amount(self, value: Decimal):
+        self._wash_trade_order_amount = value
+
+    @property
+    def sell_first(self) -> bool:
+        return self._sell_first
+
+    @sell_first.setter
+    def sell_first(self, value: bool):
+        self._sell_first = value
 
     @property
     def order_levels(self) -> int:
@@ -300,6 +322,14 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
     @hanging_orders_enabled.setter
     def hanging_orders_enabled(self, value: bool):
         self._hanging_orders_enabled = value
+
+    @property
+    def wash_trade_enabled(self) -> bool:
+        return self._wash_trade_enabled
+
+    @wash_trade_enabled.setter
+    def wash_trade_enabled(self, value: bool):
+        self._wash_trade_enabled = value
 
     @property
     def hanging_orders_cancel_pct(self) -> Decimal:
@@ -495,7 +525,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
     @property
     def active_non_hanging_orders(self) -> List[LimitOrder]:
-        orders = [o for o in self.active_orders if not self._hanging_orders_tracker.is_order_id_in_hanging_orders(o.client_order_id)]
+        orders = [o for o in self.active_orders if
+                  not self._hanging_orders_tracker.is_order_id_in_hanging_orders(o.client_order_id)]
         return orders
 
     @property
@@ -594,7 +625,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         total_in_quote = base_value + quote_balance
         base_ratio = base_value / total_in_quote if total_in_quote > 0 else 0
         quote_ratio = quote_balance / total_in_quote if total_in_quote > 0 else 0
-        data=[
+        data = [
             ["", base_asset, quote_asset],
             ["Total Balance", round(base_balance, 4), round(quote_balance, 4)],
             ["Available Balance", round(available_base_balance, 4), round(available_quote_balance, 4)],
@@ -631,7 +662,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                 level_for_calculation = lvl_buy if order.is_buy else lvl_sell
                 amount_orig = self._order_amount + ((level_for_calculation - 1) * self._order_level_amount)
                 level = "hang"
-            spread = 0 if price == 0 else abs(order.price - price)/price
+            spread = 0 if price == 0 else abs(order.price - price) / price
             age = pd.Timestamp(order_age(order, self._current_timestamp), unit='s').strftime('%H:%M:%S')
             data.append([
                 level,
@@ -665,9 +696,9 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
             elif market == self._market_info.market and self._asset_price_delegate is None:
                 ref_price = self.get_price()
             elif (
-                self._asset_price_delegate is not None
-                and market == self._asset_price_delegate.market
-                and self._price_type is not PriceType.LastOwnTrade
+                    self._asset_price_delegate is not None
+                    and market == self._asset_price_delegate.market
+                    and self._price_type is not PriceType.LastOwnTrade
             ):
                 ref_price = self._asset_price_delegate.get_price_by_type(self._price_type)
             markets_data.append([
@@ -749,8 +780,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         StrategyBase.c_tick(self, timestamp)
 
         cdef:
-            int64_t current_tick = <int64_t>(timestamp // self._status_report_interval)
-            int64_t last_tick = <int64_t>(self._last_timestamp // self._status_report_interval)
+            int64_t current_tick = <int64_t> (timestamp // self._status_report_interval)
+            int64_t last_tick = <int64_t> (self._last_timestamp // self._status_report_interval)
             bint should_report_warnings = ((current_tick > last_tick) and
                                            (self._logging_options & self.OPTION_LOG_STATUS_REPORT))
             cdef object proposal
@@ -784,10 +815,11 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
             if self._create_timestamp <= self._current_timestamp:
 
                 # wash_trade
-                wash_trade_proposal = self.c_create_wash_trading_proposal()
-                self.c_apply_wash_trade_budget_constraint(wash_trade_proposal)
-                if self.c_to_create_wash_trade_orders(wash_trade_proposal):
-                    self.c_execute_orders_proposal(wash_trade_proposal)
+                if self.wash_trade_enabled:
+                    wash_trade_proposal = self.c_create_wash_trading_proposal()
+                    self.c_apply_wash_trade_budget_constraint(wash_trade_proposal)
+                    if self.c_to_create_wash_trade_orders(wash_trade_proposal):
+                        self.c_execute_orders_proposal(wash_trade_proposal)
 
                 # 1. Create base order proposals
                 proposal = self.c_create_base_proposal()
@@ -821,45 +853,37 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
         buy_reference_price = sell_reference_price = self.get_price()
         bid, ask = self.c_get_top_bid_ask()
-        current_price_difference = (ask-bid)/bid
+        current_price_difference = (ask - bid) / bid
         wash_trade_price = buy_reference_price * Decimal(
             str(random.uniform(1, float(self._wash_trade_price_upper_factor))))
 
         if wash_trade_price > bid and wash_trade_price < ask and \
-                self._orderbook_trade_volumn >= 10 and \
+                self._last_traded_size >= self._last_traded_size_condition and \
                 current_price_difference >= self._minimum_price_difference:
-
-        # First to check if a customized order override is configured, otherwise the proposal will be created according
-        # to order spread, amount, and levels setting.
-
             if not buy_reference_price.is_nan() and not self._wash_trade_created_tag:
                 price = wash_trade_price
                 price = market.c_quantize_order_price(self.trading_pair, price)
-                size = self._order_amount * Decimal(
-            str(random.uniform(1, float(self._wash_trade_amount_upper_factor))))
+                size = self._wash_trade_order_amount * Decimal(
+                    str(random.uniform(1, float(self._wash_trade_amount_upper_factor))))
                 size = market.c_quantize_order_amount(self.trading_pair, size)
                 if size > 0:
-                    buys.append(PriceSize(price, size))
-            # if not sell_reference_price.is_nan() and self._wash_trade_created_tag:
-            #     price = market.c_quantize_order_price(self.trading_pair, price)
-            #     price = market.c_quantize_order_price(self.trading_pair, price)
-            #     size = self._order_amount
-            #     size = market.c_quantize_order_amount(self.trading_pair, size)
-            #     if size > 0:
-            #         sells.append(PriceSize(price, size))
+                    if self.sell_first:
+                        sells.append(PriceSize(price, size))
+                    else:
+                        buys.append(PriceSize(price, size))
 
             self.logger().info(f"Wash trading!,"
-                           f"buy_reference_price is {buy_reference_price}, "
-                           f"wash_trade_price is {wash_trade_price}, "
-                           f"top price is {(bid, ask)}, "
-                           f"_orderbook_trade_volumn is {self._orderbook_trade_volumn}, "
-                           f"current_price_difference is {current_price_difference}")
+                               f"buy_reference_price is {buy_reference_price}, "
+                               f"wash_trade_price is {wash_trade_price}, "
+                               f"top price is {(bid, ask)}, "
+                               f"_last_traded_size is {self._last_traded_size}, "
+                               f"current_price_difference is {current_price_difference}")
         else:
             self.logger().info(f"can not do wash trade,"
                                f"buy_reference_price is {buy_reference_price}, "
                                f"wash_trade_price is {wash_trade_price}, "
                                f"top price is {(bid, ask)}, "
-                               f"_orderbook_trade_volumn is {self._orderbook_trade_volumn}, "
+                               f"_last_traded_size is {self._last_traded_size}, "
                                f"current_price_difference is {current_price_difference}")
 
         return Proposal(buys, sells)
@@ -929,7 +953,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                         buys.append(PriceSize(price, size))
             if not sell_reference_price.is_nan():
                 for level in range(0, self._sell_levels):
-                    price = sell_reference_price * (Decimal("1") + self._ask_spread + (level * self._order_level_spread))
+                    price = sell_reference_price * (
+                                Decimal("1") + self._ask_spread + (level * self._order_level_spread))
                     price = market.c_quantize_order_price(self.trading_pair, price)
                     size = self._order_amount + (self._order_level_amount * level)
                     size = market.c_quantize_order_amount(self.trading_pair, size)
@@ -1091,7 +1116,6 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         # else:
         #     proposal.sells = proposal.buys = []
 
-
     cdef c_apply_budget_constraint(self, object proposal):
         cdef:
             ExchangeBase market = self._market_info.market
@@ -1172,15 +1196,16 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
             # If the price_above_bid is lower than the price suggested by the top pricing proposal,
             # lower the price and from there apply the order_level_spread to each order in the next levels
-            proposal.buys = sorted(proposal.buys, key = lambda p: p.price, reverse = True)
+            proposal.buys = sorted(proposal.buys, key=lambda p: p.price, reverse=True)
             lower_buy_price = min(proposal.buys[0].price, price_above_bid)
             for i, proposed in enumerate(proposal.buys):
                 if self._split_order_levels_enabled:
                     proposal.buys[i].price = (market.c_quantize_order_price(self.trading_pair, lower_buy_price)
                                               * (1 - self._bid_order_level_spreads[i] / Decimal("100"))
-                                              / (1-self._bid_order_level_spreads[0] / Decimal("100")))
+                                              / (1 - self._bid_order_level_spreads[0] / Decimal("100")))
                     continue
-                proposal.buys[i].price = market.c_quantize_order_price(self.trading_pair, lower_buy_price) * (1 - self.order_level_spread * i)
+                proposal.buys[i].price = market.c_quantize_order_price(self.trading_pair, lower_buy_price) * (
+                            1 - self.order_level_spread * i)
 
         if len(proposal.sells) > 0:
             # Get the top ask price in the market using order_optimization_depth and your sell order volume
@@ -1195,7 +1220,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
             # If the price_below_ask is higher than the price suggested by the pricing proposal,
             # increase your price and from there apply the order_level_spread to each order in the next levels
-            proposal.sells = sorted(proposal.sells, key = lambda p: p.price)
+            proposal.sells = sorted(proposal.sells, key=lambda p: p.price)
             higher_sell_price = max(proposal.sells[0].price, price_below_ask)
             for i, proposed in enumerate(proposal.sells):
                 if self._split_order_levels_enabled:
@@ -1203,7 +1228,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                                                * (1 + self._ask_order_level_spreads[i] / Decimal("100"))
                                                / (1 + self._ask_order_level_spreads[0] / Decimal("100")))
                     continue
-                proposal.sells[i].price = market.c_quantize_order_price(self.trading_pair, higher_sell_price) * (1 + self.order_level_spread * i)
+                proposal.sells[i].price = market.c_quantize_order_price(self.trading_pair, higher_sell_price) * (
+                            1 + self.order_level_spread * i)
 
     cdef object c_apply_add_transaction_costs(self, object proposal):
         cdef:
@@ -1225,7 +1251,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
             object orderbook_price = order_book_trade_event.price
             object orderbook_amount = order_book_trade_event.amount
             LimitOrder limit_order
-        self._orderbook_trade_volumn = orderbook_price * orderbook_amount
+        self._last_traded_size = orderbook_price * orderbook_amount
 
     def did_order_book_trade_order(self, order_book_trade_event):
         self.c_did_order_book_trade_order(order_book_trade_event)
@@ -1286,6 +1312,26 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                 )
             # self._wash_trade_created_tag = False
 
+    cdef c_did_create_sell_order(self, object order_created_event):
+        cdef:
+            object wash_price = order_created_event.price
+            object wash_amount = order_created_event.amount
+            list buys = []
+
+        if self._wash_trade_created_tag:
+            # hedge
+            buys.append(PriceSize(wash_price, wash_amount))
+            wash_trade_proposal = Proposal([], buys)
+            # self.c_execute_orders_proposal(wash_trade_proposal)
+            for idx, sell in enumerate(wash_trade_proposal.buys):
+                bid_order_id = self.c_buy_with_specific_market(
+                    self._market_info,
+                    sell.size,
+                    order_type=OrderType.LIMIT,
+                    price=wash_price,
+                    expiration_seconds=NaN
+                )
+            # self._wash_trade_created_tag = False
 
     cdef c_did_complete_buy_order(self, object order_completed_event):
         cdef:
@@ -1318,7 +1364,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                 return
 
         # delay order creation by filled_order_dalay (in seconds)
-        self._create_timestamp = self._current_timestamp + self._filled_order_delay * random.uniform(1, float(self._filled_order_delay_upper_factor))
+        self._create_timestamp = self._current_timestamp + self._filled_order_delay * random.uniform(1, float(
+            self._filled_order_delay_upper_factor))
         self._cancel_timestamp = min(self._cancel_timestamp, self._create_timestamp)
 
         self._filled_buys_balance += 1
@@ -1339,10 +1386,14 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         cdef:
             str order_id = order_completed_event.order_id
             LimitOrder limit_order_record = self._sb_order_tracker.c_get_limit_order(self._market_info, order_id)
+            list active_orders = self.market_info_to_active_orders.get(self._market_info, [])
+
         if limit_order_record is None:
             return
         if self._wash_trade_created_tag:
             self._wash_trade_created_tag = False
+            for order in self.active_orders:
+                self.c_cancel_order(self._market_info, order.client_order_id)
         active_buy_ids = [x.client_order_id for x in self.active_orders if x.is_buy]
         if self._hanging_orders_enabled:
             # If the filled order is a hanging order, do nothing
@@ -1360,7 +1411,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                 return
 
         # delay order creation by filled_order_dalay (in seconds)
-        self._create_timestamp = self._current_timestamp + self._filled_order_delay  * random.uniform(1, float(self._filled_order_delay_upper_factor))
+        self._create_timestamp = self._current_timestamp + self._filled_order_delay * random.uniform(1, float(
+            self._filled_order_delay_upper_factor))
         self._cancel_timestamp = min(self._cancel_timestamp, self._create_timestamp)
 
         self._filled_sells_balance += 1
@@ -1384,7 +1436,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         proposal_prices = sorted(proposal_prices)
         for current, proposal in zip(current_prices, proposal_prices):
             # if spread diff is more than the tolerance or order quantities are different, return false.
-            if abs(proposal - current)/current > self._order_refresh_tolerance_pct:
+            if abs(proposal - current) / current > self._order_refresh_tolerance_pct:
                 return False
         return True
 
@@ -1451,7 +1503,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
     cdef bint c_to_create_orders(self, object proposal):
         non_hanging_orders_non_cancelled = [o for o in self.active_non_hanging_orders if not
-                                            self._hanging_orders_tracker.is_potential_hanging_order(o)]
+        self._hanging_orders_tracker.is_potential_hanging_order(o)]
         return (self._create_timestamp < self._current_timestamp
                 and (not self._should_wait_order_cancel_confirmation or
                      len(self._sb_order_tracker.in_flight_cancels) == 0)
@@ -1466,7 +1518,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                 and (not self._should_wait_order_cancel_confirmation or
                      len(self._sb_order_tracker.in_flight_cancels) == 0)
                 and proposal is not None):
-            if len(proposal.buys) > 0:
+            if len(proposal.buys) > 0 or len(proposal.sells) > 0:
                 self._hanging_orders_tracker.update_strategy_orders_with_equivalent_orders()
                 if len(active_orders) > 0:
                     for order in self.active_non_hanging_orders:

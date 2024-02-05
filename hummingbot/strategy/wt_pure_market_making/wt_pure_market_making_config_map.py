@@ -33,6 +33,12 @@ def order_amount_prompt() -> str:
     return f"What is the amount of {base_asset} per order? >>> "
 
 
+def wash_trade_order_amount_prompt() -> str:
+    trading_pair = wt_pure_market_making_config_map["market"].value
+    base_asset, quote_asset = trading_pair.split("-")
+    return f"What is the amount of {base_asset} per wash_trade? >>> "
+
+
 def validate_price_source(value: str) -> Optional[str]:
     if value not in {"current_market", "external_market", "custom_api"}:
         return "Invalid price source type."
@@ -181,11 +187,33 @@ wt_pure_market_making_config_map = {
                   type_str="decimal",
                   validator=lambda v: validate_decimal(v, min_value=Decimal("0"), inclusive=False),
                   prompt_on_new=True),
+    "wash_trade_enabled":
+        ConfigVar(key="wash_trade_enabled",
+                  prompt="Would you like to enable wash trade ? (Yes/No) >>> ",
+                  type_str="bool",
+                  default=False,
+                  validator=validate_bool),
+    "wash_trade_order_amount":
+        ConfigVar(key="wash_trade_order_amount",
+                  prompt=wash_trade_order_amount_prompt,
+                  type_str="decimal",
+                  default=lambda: wt_pure_market_making_config_map.get("order_amount").value,
+                  required_if=lambda: wt_pure_market_making_config_map.get("wash_trade_enabled").value,
+                  validator=lambda v: validate_decimal(v, min_value=Decimal("0"), inclusive=False),
+                  prompt_on_new=True),
+    "sell_first":
+        ConfigVar(key="sell_first",
+                  prompt="Do you want to sell first? (Yes/No) >>> ",
+                  type_str="bool",
+                  default=True,
+                  required_if=lambda: wt_pure_market_making_config_map.get("wash_trade_enabled").value,
+                  validator=validate_bool),
     "wash_trade_price_upper_factor":
         ConfigVar(key="wash_trade_price_upper_factor",
                   prompt=f"What is the highest percentage factor you want? >>> ",
                   type_str="decimal",
                   default=Decimal("1.2"),
+                  required_if=lambda: wt_pure_market_making_config_map.get("wash_trade_enabled").value,
                   validator=lambda v: validate_decimal(v, min_value=Decimal("0"), inclusive=False),
                   prompt_on_new=True),
     "wash_trade_amount_upper_factor":
@@ -193,6 +221,7 @@ wt_pure_market_making_config_map = {
                   prompt=f"What is the highest percentage factor you want? >>> ",
                   type_str="decimal",
                   default=Decimal("1.6"),
+                  required_if=lambda: wt_pure_market_making_config_map.get("wash_trade_enabled").value,
                   validator=lambda v: validate_decimal(v, min_value=Decimal("0"), inclusive=False),
                   prompt_on_new=True),
     "filled_order_delay_upper_factor":
@@ -200,6 +229,7 @@ wt_pure_market_making_config_map = {
                   prompt=f"What is the highest percentage factor you want? >>> ",
                   type_str="decimal",
                   default=Decimal("1.6"),
+                  required_if=lambda: wt_pure_market_making_config_map.get("wash_trade_enabled").value,
                   validator=lambda v: validate_decimal(v, min_value=Decimal("0"), inclusive=False),
                   prompt_on_new=True),
     "minimum_price_difference":
@@ -207,6 +237,15 @@ wt_pure_market_making_config_map = {
                   prompt=f"What is the minimum_price_difference you want? >>> ",
                   type_str="decimal",
                   default=Decimal("0.0005"),
+                  required_if=lambda: wt_pure_market_making_config_map.get("wash_trade_enabled").value,
+                  validator=lambda v: validate_decimal(v, min_value=Decimal("0"), inclusive=False)
+                  ),
+    "last_traded_size_condition":
+        ConfigVar(key="last_traded_size_condition",
+                  prompt=f"What is the last_traded_size you want? (10 usdt) >>> ",
+                  type_str="decimal",
+                  default=Decimal("10"),
+                  required_if=lambda: wt_pure_market_making_config_map.get("wash_trade_enabled").value,
                   validator=lambda v: validate_decimal(v, min_value=Decimal("0"), inclusive=False)
                   ),
     "price_ceiling":

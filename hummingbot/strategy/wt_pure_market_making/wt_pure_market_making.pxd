@@ -14,10 +14,14 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         object _ask_spread
         object _minimum_spread
         object _order_amount
+        bint _wash_trade_enabled
+        object _wash_trade_order_amount
+        bint _sell_first
         object _wash_trade_price_upper_factor
         object _wash_trade_amount_upper_factor
         object _filled_order_delay_upper_factor
         object _minimum_price_difference
+        object _last_traded_size_condition
         object _orderbook_trade_volumn
         int _order_levels
         int _buy_levels
@@ -66,6 +70,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         object _moving_price_band
         bint _all_listener_ready
         bint _wash_trade_created_tag
+        object _last_traded_size
         EventListener _order_book_trade_listener
 
     cdef object c_get_mid_price(self)
