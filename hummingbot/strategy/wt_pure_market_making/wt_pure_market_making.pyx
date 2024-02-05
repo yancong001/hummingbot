@@ -85,6 +85,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                     order_level_spread: Decimal = s_decimal_zero,
                     order_level_amount: Decimal = s_decimal_zero,
                     order_refresh_time: float = 30.0,
+                    wash_trade_refresh_time: float = 30.0,
                     max_order_age: float = 1800.0,
                     order_refresh_tolerance_pct: Decimal = s_decimal_neg_one,
                     filled_order_delay: float = 60.0,
@@ -141,6 +142,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         self._order_level_spread = order_level_spread
         self._order_level_amount = order_level_amount
         self._order_refresh_time = order_refresh_time
+        self._wash_trade_refresh_time = wash_trade_refresh_time
         self._max_order_age = max_order_age
         self._order_refresh_tolerance_pct = order_refresh_tolerance_pct
         self._filled_order_delay = filled_order_delay
@@ -168,6 +170,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         self._ask_order_level_spreads = ask_order_level_spreads
         self._cancel_timestamp = 0
         self._create_timestamp = 0
+        self._create_wash_trade_timestamp = 0
         self._limit_order_type = self._market_info.market.get_maker_order_type()
         if take_if_crossed:
             self._limit_order_type = OrderType.LIMIT
@@ -371,6 +374,13 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
     @order_refresh_time.setter
     def order_refresh_time(self, value: float):
         self._order_refresh_time = value
+    @property
+    def wash_trade_refresh_time(self) -> float:
+        return self._wash_trade_refresh_time
+
+    @wash_trade_refresh_time.setter
+    def wash_trade_refresh_time(self, value: float):
+        self._wash_trade_refresh_time = value
 
     @property
     def filled_order_delay(self) -> float:
@@ -813,15 +823,15 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
             proposal = None
             wash_trade_proposal = None
-            if self._create_timestamp <= self._current_timestamp:
 
+            if self._create_wash_trade_timestamp <= self._current_timestamp:
                 # wash_trade
                 if self.wash_trade_enabled:
                     wash_trade_proposal = self.c_create_wash_trading_proposal()
                     self.c_apply_wash_trade_budget_constraint(wash_trade_proposal)
                     if self.c_to_create_wash_trade_orders(wash_trade_proposal):
                         self.c_execute_wash_trade_orders_proposal(wash_trade_proposal)
-
+            if self._create_timestamp <= self._current_timestamp:
                 # 1. Create base order proposals
                 proposal = self.c_create_base_proposal()
                 # 2. Apply functions that limit numbers of buys and sells proposal
@@ -1349,7 +1359,6 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
             for order in self.active_orders:
                 if order.is_wash_trade_order:
                     self.c_cancel_order(self._market_info, order.client_order_id)
-                    break
         active_sell_ids = [x.client_order_id for x in self.active_orders if not x.is_buy]
 
         if self._hanging_orders_enabled:
@@ -1368,8 +1377,10 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                 return
 
         # delay order creation by filled_order_dalay (in seconds)
-        self._create_timestamp = self._current_timestamp + self._filled_order_delay * random.uniform(1, float(
+        self._create_timestamp = self._current_timestamp + self._filled_order_delay
+        self._create_wash_trade_timestamp = self._current_timestamp + self._wash_trade_refresh_time * random.uniform(1, float(
             self._filled_order_delay_upper_factor))
+
         self._cancel_timestamp = min(self._cancel_timestamp, self._create_timestamp)
 
         self._filled_buys_balance += 1
@@ -1399,7 +1410,6 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
             for order in self.active_orders:
                 if order.is_wash_trade_order:
                     self.c_cancel_order(self._market_info, order.client_order_id)
-                    break
         active_buy_ids = [x.client_order_id for x in self.active_orders if x.is_buy]
         if self._hanging_orders_enabled:
             # If the filled order is a hanging order, do nothing
@@ -1417,7 +1427,9 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                 return
 
         # delay order creation by filled_order_dalay (in seconds)
-        self._create_timestamp = self._current_timestamp + self._filled_order_delay * random.uniform(1, float(
+
+        self._create_timestamp = self._current_timestamp + self._filled_order_delay
+        self._create_wash_trade_timestamp = self._current_timestamp + self._wash_trade_refresh_time * random.uniform(1, float(
             self._filled_order_delay_upper_factor))
         self._cancel_timestamp = min(self._cancel_timestamp, self._create_timestamp)
 
@@ -1522,7 +1534,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         cdef:
             list active_orders = self.active_non_hanging_orders
 
-        if (self._create_timestamp < self._current_timestamp
+        if (self._create_wash_trade_timestamp < self._current_timestamp
                 and (not self._should_wait_order_cancel_confirmation or
                      len(self._sb_order_tracker.in_flight_cancels) == 0)
                 and proposal is not None):
@@ -1648,7 +1660,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                         order = next((o for o in self.active_orders if o.client_order_id == ask_order_id))
                         if order:
                             self._hanging_orders_tracker.current_created_pairs_of_orders[idx].sell_order = order
-
+        if orders_created:
+            self.set_wash_trade_timers()
     cdef c_execute_orders_proposal(self, object proposal):
         cdef:
             double expiration_seconds = NaN
@@ -1750,6 +1763,12 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                             self._hanging_orders_tracker.current_created_pairs_of_orders[idx].sell_order = order
         if orders_created:
             self.set_timers()
+
+    cdef set_wash_trade_timers(self):
+        cdef double next_cycle = self._current_timestamp + int(self._wash_trade_refresh_time * random.uniform(1, float(
+            self._filled_order_delay_upper_factor)))
+        if self._create_wash_trade_timestamp <= self._current_timestamp:
+            self._create_wash_trade_timestamp = next_cycle
 
     cdef set_timers(self):
         cdef double next_cycle = self._current_timestamp + self._order_refresh_time

@@ -32,6 +32,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         object _order_level_spread
         object _order_level_amount
         double _order_refresh_time
+        double _wash_trade_refresh_time
         double _max_order_age
         object _order_refresh_tolerance_pct
         double _filled_order_delay
@@ -57,6 +58,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
         double _cancel_timestamp
         double _create_timestamp
+        double _create_wash_trade_timestamp
         object _limit_order_type
         bint _all_markets_ready
         int _filled_buys_balance
@@ -100,4 +102,5 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
     cdef bint c_to_create_wash_trade_orders(self, object proposal)
     cdef c_execute_orders_proposal(self, object proposal)
     cdef set_timers(self)
+    cdef set_wash_trade_timers(self)
     cdef c_apply_moving_price_band(self, object proposal)

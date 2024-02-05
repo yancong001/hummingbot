@@ -167,6 +167,13 @@ wt_pure_market_making_config_map = {
                   type_str="float",
                   validator=lambda v: validate_decimal(v, 0, inclusive=False),
                   prompt_on_new=True),
+    "wash_trade_refresh_time":
+        ConfigVar(key="wash_trade_refresh_time",
+                  prompt="How often do you want make wash trade "
+                         "(in seconds)? >>> ",
+                  type_str="float",
+                  validator=lambda v: validate_decimal(v, 0, inclusive=False),
+                  prompt_on_new=True),
     "max_order_age":
         ConfigVar(key="max_order_age",
                   prompt="How long do you want to cancel and replace bids and asks "
