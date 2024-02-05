@@ -41,6 +41,17 @@ order_refresh_tolerance_pct: null
 # Size of your bid and ask order.
 order_amount: null
 
+# Whether to enable wash trade mode (true/false).
+wash_trade_enabled: null
+
+# Whethe
+
+# Size of your wash trade order.
+wash_trade_order_amount: null
+
+# Whether to enable sell wash trade order first (true/false).
+sell_first: null
+
 # A random number between 1 and this number, used for the price
 wash_trade_price_upper_factor: null
 
@@ -52,6 +63,9 @@ filled_order_delay_upper_factor: null
 
 # Minimum basis point difference between the best bid and ask price
 minimum_price_difference: null
+
+# The quantity required for the latest trade
+last_traded_size_condition: null
 
 # Price band ceiling.
 price_ceiling: null

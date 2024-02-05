@@ -192,7 +192,8 @@ wt_pure_market_making_config_map = {
                   prompt="Would you like to enable wash trade ? (Yes/No) >>> ",
                   type_str="bool",
                   default=False,
-                  validator=validate_bool),
+                  validator=validate_bool,
+                  prompt_on_new=True),
     "wash_trade_order_amount":
         ConfigVar(key="wash_trade_order_amount",
                   prompt=wash_trade_order_amount_prompt,
@@ -207,7 +208,8 @@ wt_pure_market_making_config_map = {
                   type_str="bool",
                   default=True,
                   required_if=lambda: wt_pure_market_making_config_map.get("wash_trade_enabled").value,
-                  validator=validate_bool),
+                  validator=validate_bool,
+                  prompt_on_new=True),
     "wash_trade_price_upper_factor":
         ConfigVar(key="wash_trade_price_upper_factor",
                   prompt=f"What is the highest percentage factor you want? >>> ",

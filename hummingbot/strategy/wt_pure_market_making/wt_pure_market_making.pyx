@@ -1297,7 +1297,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
             object wash_amount = order_created_event.amount
             list sells = []
 
-        if self._wash_trade_created_tag:
+        if self._wash_trade_created_tag and not self.sell_first:
             # hedge
             sells.append(PriceSize(wash_price, wash_amount))
             wash_trade_proposal = Proposal([], sells)
@@ -1317,16 +1317,15 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
             object wash_price = order_created_event.price
             object wash_amount = order_created_event.amount
             list buys = []
-
-        if self._wash_trade_created_tag:
+        if self._wash_trade_created_tag and self.sell_first:
             # hedge
             buys.append(PriceSize(wash_price, wash_amount))
-            wash_trade_proposal = Proposal([], buys)
+            wash_trade_proposal = Proposal(buys,[] )
             # self.c_execute_orders_proposal(wash_trade_proposal)
-            for idx, sell in enumerate(wash_trade_proposal.buys):
+            for idx, buy in enumerate(wash_trade_proposal.buys):
                 bid_order_id = self.c_buy_with_specific_market(
                     self._market_info,
-                    sell.size,
+                    buy.size,
                     order_type=OrderType.LIMIT,
                     price=wash_price,
                     expiration_seconds=NaN
@@ -1345,7 +1344,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         if self._wash_trade_created_tag:
             self._wash_trade_created_tag = False
             for order in self.active_orders:
-                self.c_cancel_order(self._market_info, order.client_order_id)
+                if order.price == limit_order_record.price:
+                    self.c_cancel_order(self._market_info, order.client_order_id)
         active_sell_ids = [x.client_order_id for x in self.active_orders if not x.is_buy]
 
         if self._hanging_orders_enabled:
@@ -1393,7 +1393,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         if self._wash_trade_created_tag:
             self._wash_trade_created_tag = False
             for order in self.active_orders:
-                self.c_cancel_order(self._market_info, order.client_order_id)
+                if order.price == limit_order_record.price:
+                    self.c_cancel_order(self._market_info, order.client_order_id)
         active_buy_ids = [x.client_order_id for x in self.active_orders if x.is_buy]
         if self._hanging_orders_enabled:
             # If the filled order is a hanging order, do nothing
