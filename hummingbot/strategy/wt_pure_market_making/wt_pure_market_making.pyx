@@ -1522,20 +1522,20 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         cdef:
             list active_orders = self.active_non_hanging_orders
 
-        return (self._create_timestamp < self._current_timestamp
+        if (self._create_timestamp < self._current_timestamp
                 and (not self._should_wait_order_cancel_confirmation or
                      len(self._sb_order_tracker.in_flight_cancels) == 0)
-                and proposal is not None)
-            #     and proposal is not None):
-            # if len(proposal.buys) > 0 or len(proposal.sells) > 0:
-            #     self._hanging_orders_tracker.update_strategy_orders_with_equivalent_orders()
-            #     if len(active_orders) > 0:
-            #         for order in self.active_non_hanging_orders:
-            #             # If is about to be added to hanging_orders then don't cancel
-            #             if not self._hanging_orders_tracker.is_potential_hanging_order(order):
-            #                 self.c_cancel_order(self._market_info, order.client_order_id)
-            #     self._wash_trade_created_tag = True
-            # return True
+                and proposal is not None):
+            if len(proposal.buys) > 0 or len(proposal.sells) > 0:
+                self._hanging_orders_tracker.update_strategy_orders_with_equivalent_orders()
+                if len(active_orders) > 0:
+                    for order in self.active_non_hanging_orders:
+                        # If is about to be added to hanging_orders then don't cancel
+                        if not self._hanging_orders_tracker.is_potential_hanging_order(order):
+                            if order.is_wash_trade_order:
+                                self.c_cancel_order(self._market_info, order.client_order_id)
+                self._wash_trade_created_tag = True
+            return True
 
     cdef c_execute_wash_trade_orders_proposal(self, object proposal):
         cdef:
