@@ -6,6 +6,7 @@ from .LimitOrder cimport LimitOrder as CPPLimitOrder
 cdef class LimitOrder:
     cdef:
         CPPLimitOrder _cpp_limit_order
+        bint _is_wash_trade_order
     cdef long long c_age(self)
     cdef long long c_age_til(self, long long start_timestamp)
 

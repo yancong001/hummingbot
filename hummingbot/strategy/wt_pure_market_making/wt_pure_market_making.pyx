@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 import random
+import time
 
 from hummingbot.connector.exchange_base import ExchangeBase
 from hummingbot.connector.exchange_base cimport ExchangeBase
@@ -834,14 +835,14 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
                 if not self._take_if_crossed:
                     self.c_filter_out_takers(proposal)
-            if not self._wash_trade_created_tag:
-                self._hanging_orders_tracker.process_tick()
+            # if not self._wash_trade_created_tag:
+            self._hanging_orders_tracker.process_tick()
 
-                self.c_cancel_active_orders_on_max_age_limit()
-                self.c_cancel_active_orders(proposal)
-                self.c_cancel_orders_below_min_spread()
-                if self.c_to_create_orders(proposal):
-                    self.c_execute_orders_proposal(proposal)
+            self.c_cancel_active_orders_on_max_age_limit()
+            self.c_cancel_active_orders(proposal)
+            self.c_cancel_orders_below_min_spread()
+            if self.c_to_create_orders(proposal):
+                self.c_execute_orders_proposal(proposal)
         finally:
             self._last_timestamp = timestamp
 
@@ -1346,8 +1347,9 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         if self._wash_trade_created_tag:
             self._wash_trade_created_tag = False
             for order in self.active_orders:
-                if order.price == limit_order_record.price:
+                if order.is_wash_trade_order:
                     self.c_cancel_order(self._market_info, order.client_order_id)
+                    break
         active_sell_ids = [x.client_order_id for x in self.active_orders if not x.is_buy]
 
         if self._hanging_orders_enabled:
@@ -1395,8 +1397,9 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         if self._wash_trade_created_tag:
             self._wash_trade_created_tag = False
             for order in self.active_orders:
-                if order.price == limit_order_record.price:
+                if order.is_wash_trade_order:
                     self.c_cancel_order(self._market_info, order.client_order_id)
+                    break
         active_buy_ids = [x.client_order_id for x in self.active_orders if x.is_buy]
         if self._hanging_orders_enabled:
             # If the filled order is a hanging order, do nothing
@@ -1485,7 +1488,9 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
             for order in self.active_non_hanging_orders:
                 # If is about to be added to hanging_orders then don't cancel
                 if not self._hanging_orders_tracker.is_potential_hanging_order(order):
-                    self.c_cancel_order(self._market_info, order.client_order_id)
+                    if not order.is_wash_trade_order:
+                        self.c_cancel_order(self._market_info, order.client_order_id)
+            # self._wash_trade_created_tag = False
         # else:
         #     self.set_timers()
 
@@ -1495,7 +1500,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
             list active_orders = self.market_info_to_active_orders.get(self._market_info, [])
             object price = self.get_price()
         active_orders = [order for order in active_orders
-                         if order.client_order_id not in self.hanging_order_ids]
+                         if order.client_order_id not in self.hanging_order_ids and not order.is_wash_trade_order]
         for order in active_orders:
             negation = -1 if order.is_buy else 1
             if (negation * (order.price - price) / price) < self._minimum_spread:
@@ -1517,19 +1522,20 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         cdef:
             list active_orders = self.active_non_hanging_orders
 
-        if (self._create_timestamp < self._current_timestamp
+        return (self._create_timestamp < self._current_timestamp
                 and (not self._should_wait_order_cancel_confirmation or
                      len(self._sb_order_tracker.in_flight_cancels) == 0)
-                and proposal is not None):
-            if len(proposal.buys) > 0 or len(proposal.sells) > 0:
-                self._hanging_orders_tracker.update_strategy_orders_with_equivalent_orders()
-                if len(active_orders) > 0:
-                    for order in self.active_non_hanging_orders:
-                        # If is about to be added to hanging_orders then don't cancel
-                        if not self._hanging_orders_tracker.is_potential_hanging_order(order):
-                            self.c_cancel_order(self._market_info, order.client_order_id)
-                self._wash_trade_created_tag = True
-            return True
+                and proposal is not None)
+            #     and proposal is not None):
+            # if len(proposal.buys) > 0 or len(proposal.sells) > 0:
+            #     self._hanging_orders_tracker.update_strategy_orders_with_equivalent_orders()
+            #     if len(active_orders) > 0:
+            #         for order in self.active_non_hanging_orders:
+            #             # If is about to be added to hanging_orders then don't cancel
+            #             if not self._hanging_orders_tracker.is_potential_hanging_order(order):
+            #                 self.c_cancel_order(self._market_info, order.client_order_id)
+            #     self._wash_trade_created_tag = True
+            # return True
 
     cdef c_execute_wash_trade_orders_proposal(self, object proposal):
         cdef:
@@ -1557,6 +1563,9 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                         expiration_seconds=expiration_seconds
                     )
                     orders_created = True
+                    order = next((o for o in self.active_orders if o.client_order_id == ask_order_id))
+                    if order:
+                        order.is_wash_trade_order = True
                     if idx < number_of_pairs:
                         order = next((o for o in self.active_orders if o.client_order_id == ask_order_id))
                         if order:
@@ -1579,6 +1588,9 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                         expiration_seconds=expiration_seconds
                     )
                     orders_created = True
+                    order = next((o for o in self.active_orders if o.client_order_id == bid_order_id))
+                    if order:
+                        order.is_wash_trade_order = True
                     if idx < number_of_pairs:
                         order = next((o for o in self.active_orders if o.client_order_id == bid_order_id))
                         if order:
@@ -1603,6 +1615,9 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                         expiration_seconds=expiration_seconds
                     )
                     orders_created = True
+                    order = next((o for o in self.active_orders if o.client_order_id == bid_order_id))
+                    if order:
+                        order.is_wash_trade_order = True
                     if idx < number_of_pairs:
                         order = next((o for o in self.active_orders if o.client_order_id == bid_order_id))
                         if order:
@@ -1626,6 +1641,9 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                         expiration_seconds=expiration_seconds
                     )
                     orders_created = True
+                    order = next((o for o in self.active_orders if o.client_order_id == ask_order_id))
+                    if order:
+                        order.is_wash_trade_order = True
                     if idx < number_of_pairs:
                         order = next((o for o in self.active_orders if o.client_order_id == ask_order_id))
                         if order:

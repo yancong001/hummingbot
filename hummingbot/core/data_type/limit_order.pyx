@@ -85,6 +85,7 @@ cdef class LimitOrder:
                                               creation_timestamp,
                                               status.value,
                                               cpp_position)
+        self._is_wash_trade_order = False
 
     @property
     def client_order_id(self) -> str:
@@ -103,6 +104,14 @@ cdef class LimitOrder:
     @property
     def is_buy(self) -> bool:
         return self._cpp_limit_order.getIsBuy()
+
+    @property
+    def is_wash_trade_order(self) -> bool:
+        return self._is_wash_trade_order
+
+    @is_wash_trade_order.setter
+    def is_wash_trade_order(self, value: bool):
+        self._is_wash_trade_order = value
 
     @property
     def base_currency(self) -> str:
