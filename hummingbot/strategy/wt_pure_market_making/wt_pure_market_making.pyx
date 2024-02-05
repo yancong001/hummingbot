@@ -1598,7 +1598,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                     bid_order_id = self.c_buy_with_specific_market(
                         self._market_info,
                         buy.size,
-                        order_type=self._limit_order_type,
+                        order_type=OrderType.LIMIT,
                         price=buy.price,
                         expiration_seconds=expiration_seconds
                     )
@@ -1621,7 +1621,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                     ask_order_id = self.c_sell_with_specific_market(
                         self._market_info,
                         sell.size,
-                        order_type=self._limit_order_type,
+                        order_type=OrderType.LIMIT,
                         price=sell.price,
                         expiration_seconds=expiration_seconds
                     )
