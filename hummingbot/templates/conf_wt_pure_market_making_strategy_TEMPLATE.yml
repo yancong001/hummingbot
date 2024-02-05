@@ -44,8 +44,6 @@ order_amount: null
 # Whether to enable wash trade mode (true/false).
 wash_trade_enabled: null
 
-# Whethe
-
 # Size of your wash trade order.
 wash_trade_order_amount: null
 
