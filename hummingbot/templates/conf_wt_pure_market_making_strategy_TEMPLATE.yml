@@ -51,6 +51,9 @@ wash_trade_enabled: null
 # Size of your wash trade order.
 wash_trade_order_amount: null
 
+# A random number between 1 and this number, used for order_amount
+order_amount_upper_factor: null
+
 # Whether to enable sell wash trade order first (true/false).
 sell_first: null
 

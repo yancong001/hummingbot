@@ -74,6 +74,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                     ask_spread: Decimal,
                     order_amount: Decimal,
                     wash_trade_order_amount: Decimal,
+                    order_amount_upper_factor: Decimal = Decimal("1"),
                     wash_trade_enabled: bool = False,
                     sell_first: bool = True,
                     wash_trade_price_upper_factor: Decimal = 1.2,
@@ -132,6 +133,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         self._wash_trade_enabled = wash_trade_enabled
         self._order_amount = order_amount
         self._wash_trade_order_amount = wash_trade_order_amount
+        self._base_order_amount = order_amount
+        self._order_amount_upper_factor = order_amount_upper_factor
         self._sell_first = sell_first
         self._wash_trade_price_upper_factor = wash_trade_price_upper_factor
         self._wash_trade_amount_upper_factor = wash_trade_amount_upper_factor
@@ -491,6 +494,11 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
     def moving_price_band(self) -> MovingPriceBand:
         return self._moving_price_band
 
+    def _random_order_amount(self) -> Decimal:
+        self.order_amount = self._base_order_amount * Decimal(
+                    str(random.uniform(1, float(self._order_amount_upper_factor))))
+        return self.order_amount
+
     def _random_order_level_amount(self) -> Decimal:
         self.order_level_amount = self._base_order_level_amount * Decimal(
                     str(random.uniform(1, float(self._order_level_amount_upper_factor))))
@@ -499,7 +507,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
     def _random_order_level_spread(self) -> Decimal:
         self.order_level_spread = self._base_order_level_spread * Decimal(
                     str(random.uniform(1, float(self._order_level_spread_upper_factor))))
-        return self.order_level_amount
+        return self.order_level_spread
 
     def get_price(self) -> Decimal:
         price_provider = self._asset_price_delegate or self._market_info
@@ -942,6 +950,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         buy_reference_price = sell_reference_price = self.get_price()
 
         #Apply random numbers to order_level_amount and order_level_spread
+        self._random_order_amount()
         self._random_order_level_amount()
         self._random_order_level_spread()
 

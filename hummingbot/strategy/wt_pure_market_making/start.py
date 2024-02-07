@@ -25,6 +25,7 @@ def start(self):
         order_amount = c_map.get("order_amount").value
         wash_trade_enabled = c_map.get("wash_trade_enabled").value
         wash_trade_order_amount = c_map.get("wash_trade_order_amount").value
+        order_amount_upper_factor = c_map.get("order_amount_upper_factor").value
         sell_first = c_map.get("sell_first").value
         wash_trade_price_upper_factor = c_map.get("wash_trade_price_upper_factor").value
         wash_trade_amount_upper_factor = c_map.get("wash_trade_amount_upper_factor").value
@@ -121,6 +122,7 @@ def start(self):
             order_levels=order_levels,
             order_amount=order_amount,
             wash_trade_order_amount=wash_trade_order_amount,
+            order_amount_upper_factor=order_amount_upper_factor,
             wash_trade_enabled=wash_trade_enabled,
             sell_first=sell_first,
             wash_trade_price_upper_factor=wash_trade_price_upper_factor,

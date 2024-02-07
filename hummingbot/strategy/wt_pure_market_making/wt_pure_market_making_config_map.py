@@ -209,6 +209,13 @@ wt_pure_market_making_config_map = {
                   required_if=lambda: wt_pure_market_making_config_map.get("wash_trade_enabled").value,
                   validator=lambda v: validate_decimal(v, min_value=Decimal("0"), inclusive=False),
                   prompt_on_new=True),
+    "order_amount_upper_factor":
+        ConfigVar(key="order_amount_upper_factor",
+                  prompt="What random factor do you want? Somewhere between this number and one？ ",
+                  required_if=lambda: wt_pure_market_making_config_map.get("order_amount").value > 0,
+                  type_str="decimal",
+                  validator=lambda v: validate_decimal(v, 0, 100, inclusive=False),
+                  default=Decimal("1")),
     "sell_first":
         ConfigVar(key="sell_first",
                   prompt="Do you want to sell first? (Yes/No) >>> ",
