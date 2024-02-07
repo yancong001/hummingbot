@@ -42,7 +42,9 @@ def start(self):
         ping_pong_enabled = c_map.get("ping_pong_enabled").value
         order_levels = c_map.get("order_levels").value
         order_level_amount = c_map.get("order_level_amount").value
+        order_level_amount_upper_factor = c_map.get("order_level_amount_upper_factor").value
         order_level_spread = c_map.get("order_level_spread").value / Decimal('100')
+        order_level_spread_upper_factor = c_map.get("order_level_spread_upper_factor").value
         exchange = c_map.get("exchange").value.lower()
         raw_trading_pair = c_map.get("market").value
         inventory_skew_enabled = c_map.get("inventory_skew_enabled").value
@@ -127,7 +129,9 @@ def start(self):
             minimum_price_difference=minimum_price_difference,
             last_traded_size_condition=last_traded_size_condition,
             order_level_spread=order_level_spread,
+            order_level_spread_upper_factor=order_level_spread_upper_factor,
             order_level_amount=order_level_amount,
+            order_level_amount_upper_factor=order_level_amount_upper_factor,
             inventory_skew_enabled=inventory_skew_enabled,
             inventory_target_base_pct=inventory_target_base_pct,
             inventory_range_multiplier=inventory_range_multiplier,

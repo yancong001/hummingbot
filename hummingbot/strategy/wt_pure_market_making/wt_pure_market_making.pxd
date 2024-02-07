@@ -30,7 +30,11 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         object _bid_order_level_spreads
         object _ask_order_level_spreads
         object _order_level_spread
+        object _base_order_level_spread
+        object _order_level_spread_upper_factor
         object _order_level_amount
+        object _base_order_level_amount
+        object _order_level_amount_upper_factor
         double _order_refresh_time
         double _wash_trade_refresh_time
         double _max_order_age

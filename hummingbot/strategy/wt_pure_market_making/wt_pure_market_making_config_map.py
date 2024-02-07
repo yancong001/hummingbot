@@ -219,7 +219,7 @@ wt_pure_market_making_config_map = {
                   prompt_on_new=True),
     "wash_trade_price_upper_factor":
         ConfigVar(key="wash_trade_price_upper_factor",
-                  prompt=f"What is the highest percentage factor you want? >>> ",
+                  prompt=f"What random factor do you want? Somewhere between this number and one? >>> ",
                   type_str="decimal",
                   default=Decimal("1.2"),
                   required_if=lambda: wt_pure_market_making_config_map.get("wash_trade_enabled").value,
@@ -227,7 +227,7 @@ wt_pure_market_making_config_map = {
                   prompt_on_new=True),
     "wash_trade_amount_upper_factor":
         ConfigVar(key="wash_trade_amount_upper_factor",
-                  prompt=f"What is the highest percentage factor you want? >>> ",
+                  prompt=f"What random factor do you want? Somewhere between this number and one? >>> ",
                   type_str="decimal",
                   default=Decimal("1.6"),
                   required_if=lambda: wt_pure_market_making_config_map.get("wash_trade_enabled").value,
@@ -235,7 +235,7 @@ wt_pure_market_making_config_map = {
                   prompt_on_new=True),
     "filled_order_delay_upper_factor":
         ConfigVar(key="filled_order_delay_upper_factor",
-                  prompt=f"What is the highest percentage factor you want? >>> ",
+                  prompt=f"What random factor do you want? Somewhere between this number and one? >>> ",
                   type_str="decimal",
                   default=Decimal("1.6"),
                   required_if=lambda: wt_pure_market_making_config_map.get("wash_trade_enabled").value,
@@ -319,6 +319,13 @@ wt_pure_market_making_config_map = {
                   type_str="decimal",
                   validator=lambda v: validate_decimal(v),
                   default=0),
+    "order_level_amount_upper_factor":
+        ConfigVar(key="order_level_amount_upper_factor",
+                  prompt="What random factor do you want? Somewhere between this number and one？ ",
+                  required_if=lambda: wt_pure_market_making_config_map.get("order_levels").value > 1,
+                  type_str="decimal",
+                  validator=lambda v: validate_decimal(v, 0, 100, inclusive=False),
+                  default=Decimal("1.2")),
     "order_level_spread":
         ConfigVar(key="order_level_spread",
                   prompt="Enter the price increments (as percentage) for subsequent "
@@ -327,6 +334,13 @@ wt_pure_market_making_config_map = {
                   type_str="decimal",
                   validator=lambda v: validate_decimal(v, 0, 100, inclusive=False),
                   default=Decimal("1")),
+    "order_level_spread_upper_factor":
+        ConfigVar(key="order_level_spread_upper_factor",
+                  prompt="What random factor do you want? Somewhere between this number and one？ ",
+                  required_if=lambda: wt_pure_market_making_config_map.get("order_levels").value > 1,
+                  type_str="decimal",
+                  validator=lambda v: validate_decimal(v, 0, 100, inclusive=False),
+                  default=Decimal("1.2")),
     "inventory_skew_enabled":
         ConfigVar(key="inventory_skew_enabled",
                   prompt="Would you like to enable inventory skew? (Yes/No) >>> ",

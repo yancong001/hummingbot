@@ -109,8 +109,14 @@ order_levels: null
 # Increase or decrease size of consecutive orders after the first order (if order_levels > 1).
 order_level_amount: null
 
+# random factor between this number and one, Multiply random number by order_level_amount
+order_level_amount_upper_factor: null
+
 # Order price space between orders (if order_levels > 1).
 order_level_spread: null
+
+# random factor between this number and one，Multiply random number by order_level_spread
+order_level_spread_upper_factor: null
 
 # How long to wait before placing the next order in case your order gets filled.
 filled_order_delay: null
