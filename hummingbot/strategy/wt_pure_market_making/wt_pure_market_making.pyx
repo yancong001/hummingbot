@@ -1378,8 +1378,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
         # delay order creation by filled_order_dalay (in seconds)
         self._create_timestamp = self._current_timestamp + self._filled_order_delay
-        self._create_wash_trade_timestamp = self._current_timestamp + self._wash_trade_refresh_time * random.uniform(1, float(
-            self._filled_order_delay_upper_factor))
+        self._create_wash_trade_timestamp = self._current_timestamp + int(self._wash_trade_refresh_time * random.uniform(1, float(
+            self._filled_order_delay_upper_factor)))
 
         self._cancel_timestamp = min(self._cancel_timestamp, self._create_timestamp)
 
@@ -1429,8 +1429,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         # delay order creation by filled_order_dalay (in seconds)
 
         self._create_timestamp = self._current_timestamp + self._filled_order_delay
-        self._create_wash_trade_timestamp = self._current_timestamp + self._wash_trade_refresh_time * random.uniform(1, float(
-            self._filled_order_delay_upper_factor))
+        self._create_wash_trade_timestamp = self._current_timestamp + int(self._wash_trade_refresh_time * random.uniform(1, float(
+            self._filled_order_delay_upper_factor)))
         self._cancel_timestamp = min(self._cancel_timestamp, self._create_timestamp)
 
         self._filled_sells_balance += 1
