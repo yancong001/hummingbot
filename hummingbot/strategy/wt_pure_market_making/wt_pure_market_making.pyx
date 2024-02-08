@@ -895,7 +895,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         if wash_trade_price > bid and wash_trade_price < ask and \
                 self._last_traded_size >= self._last_traded_size_condition and \
                 current_price_difference >= self._minimum_price_difference:
-            if not buy_reference_price.is_nan() and not self._wash_trade_created_tag:
+            # if not buy_reference_price.is_nan() and not self._wash_trade_created_tag:
+            if not buy_reference_price.is_nan():
                 price = wash_trade_price
                 price = market.c_quantize_order_price(self.trading_pair, price)
                 size = self._wash_trade_order_amount * Decimal(
@@ -1302,8 +1303,8 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         cdef:
             str order_id = order_failed_event.order_id
             object order_type = order_failed_event.order_type
-        if self._wash_trade_created_tag:
-            self._wash_trade_created_tag = False
+        # if self._wash_trade_created_tag:
+        #     self._wash_trade_created_tag = False
 
     cdef c_did_fill_order(self, object order_filled_event):
         cdef:
@@ -1383,11 +1384,11 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
         if limit_order_record is None:
             return
 
-        if self._wash_trade_created_tag:
-            self._wash_trade_created_tag = False
-            for order in self.active_orders:
-                if order.is_wash_trade_order:
-                    self.c_cancel_order(self._market_info, order.client_order_id)
+        # if self._wash_trade_created_tag:
+        #     self._wash_trade_created_tag = False
+        for order in self.active_orders:
+            if order.is_wash_trade_order:
+                self.c_cancel_order(self._market_info, order.client_order_id)
         active_sell_ids = [x.client_order_id for x in self.active_orders if not x.is_buy]
 
         if self._hanging_orders_enabled:
@@ -1434,11 +1435,11 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
 
         if limit_order_record is None:
             return
-        if self._wash_trade_created_tag:
-            self._wash_trade_created_tag = False
-            for order in self.active_orders:
-                if order.is_wash_trade_order:
-                    self.c_cancel_order(self._market_info, order.client_order_id)
+        # if self._wash_trade_created_tag:
+        #     self._wash_trade_created_tag = False
+        for order in self.active_orders:
+            if order.is_wash_trade_order:
+                self.c_cancel_order(self._market_info, order.client_order_id)
         active_buy_ids = [x.client_order_id for x in self.active_orders if x.is_buy]
         if self._hanging_orders_enabled:
             # If the filled order is a hanging order, do nothing
@@ -1575,7 +1576,7 @@ cdef class WtPureMarketMakingStrategy(StrategyBase):
                         if not self._hanging_orders_tracker.is_potential_hanging_order(order):
                             if order.is_wash_trade_order:
                                 self.c_cancel_order(self._market_info, order.client_order_id)
-                self._wash_trade_created_tag = True
+                # self._wash_trade_created_tag = True
             return True
 
     cdef c_execute_wash_trade_orders_proposal(self, object proposal):

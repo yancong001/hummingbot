@@ -28,9 +28,9 @@ handlers:
         formatter: simple
         filename: $PROJECT_DIR/logs/logs_$STRATEGY_FILE_PATH.log
         encoding: utf8
-        when: "D"
-        interval: 1
-        backupCount: 7
+        when: "H"
+        interval: 6
+        backupCount: 28
     "null":
         class: logging.NullHandler
         level: DEBUG
