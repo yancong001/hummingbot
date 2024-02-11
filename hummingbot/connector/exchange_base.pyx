@@ -5,7 +5,7 @@ from typing import Dict, List, Iterator, Mapping, Optional, TYPE_CHECKING
 from bidict import bidict
 
 from hummingbot.connector.budget_checker import BudgetChecker
-from hummingbot.connector.connector_base import ConnectorBase
+from hummingbot.connector.connector_base import ConnectorBaseBudgetChecker
 from hummingbot.core.data_type.common import OrderType, PriceType, TradeType
 from hummingbot.core.data_type.limit_order import LimitOrder
 from hummingbot.core.data_type.order_book import OrderBook
