@@ -248,6 +248,17 @@ class PerpCrossExchangeMarketMakingConfigMap(BaseTradingStrategyMakerTakerConfig
             prompt_on_new=True,
         )
     )
+    leverage: Decimal = Field(
+        default=...,
+        description="derivative symbol leverage",
+        ge=0.0,
+        le=100.0,
+        client_data=ClientFieldData(
+            prompt=lambda mi: "How much leverage do you want to use? "
+                         "(Binance Perpetual supports up to 75X for most pairs) >>> ",
+            prompt_on_new=True,
+        )
+    )
     adjust_order_enabled: bool = Field(
         default=True,
         description="Adjust order price to be one tick above the top bid or below the top ask.",
@@ -440,6 +451,7 @@ class PerpCrossExchangeMarketMakingConfigMap(BaseTradingStrategyMakerTakerConfig
     @validator(
         "min_profitability",
         "order_amount",
+        "leverage",
         "top_depth_tolerance",
         "anti_hysteresis_duration",
         "order_size_taker_volume_factor",
