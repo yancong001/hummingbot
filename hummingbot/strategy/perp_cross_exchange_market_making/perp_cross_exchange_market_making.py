@@ -8,6 +8,7 @@ from typing import Dict, List, Tuple, cast
 
 import pandas as pd
 from bidict import bidict
+import time
 
 from hummingbot.client.performance import PerformanceMetrics
 from hummingbot.client.settings import AllConnectorSettings
@@ -247,10 +248,13 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
     def logging_options(self, logging_options: Tuple):
         self._logging_options = logging_options
 
-    # todo
     @property
     def active_positions(self) -> Dict[str, Position]:
-        return list(self._maker_markets)[0].market.account_positions
+        return list(self._maker_markets)[0].account_positions
+
+    @property
+    def taker_active_positions(self) -> Dict[str, Position]:
+        return list(self._taker_markets)[0].account_positions
 
     # todo
     @property
@@ -314,6 +318,49 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
                     ])
         return pd.DataFrame(data=data, columns=columns)
 
+    def active_positions_df(self) -> pd.DataFrame:
+        columns = ["Exchange", "Symbol", "Type", "Entry Price", "Amount", "Leverage", "Unrealized PnL"]
+        data = []
+        maker_market, maker_trading_pair = list(self._maker_markets)[0], self._config_map.maker_market_trading_pair
+        taker_market, taker_trading_pair = list(self._taker_markets)[0], self._config_map.taker_market_trading_pair
+        for idx in self.active_positions.values():
+            is_buy = True if idx.amount > 0 else False
+            unrealized_profit = ((maker_market.get_price(maker_trading_pair, is_buy) - idx.entry_price) * idx.amount)
+            data.append([
+                self._config_map.maker_market,
+                idx.trading_pair,
+                idx.position_side.name,
+                idx.entry_price,
+                idx.amount,
+                idx.leverage,
+                unrealized_profit
+            ])
+        for idx in self.taker_active_positions.values():
+            is_buy = True if idx.amount > 0 else False
+            unrealized_profit = ((taker_market.get_price(taker_trading_pair, is_buy) - idx.entry_price) * idx.amount)
+            data.append([
+                self._config_map.taker_market,
+                idx.trading_pair,
+                idx.position_side.name,
+                idx.entry_price,
+                idx.amount,
+                idx.leverage,
+                unrealized_profit
+            ])
+
+        return pd.DataFrame(data=data, columns=columns)
+
+    def balance_warning(self, market_trading_pair_tuples: List[MarketTradingPairTuple]) -> List[str]:
+        # Add warning lines on null balances.
+        # TO-DO: $Use min order size logic to replace the hard-coded 0.0001 value for each asset.
+        warning_lines = []
+        for market_trading_pair_tuple in market_trading_pair_tuples:
+            quote_balance = market_trading_pair_tuple.market.get_balance(market_trading_pair_tuple.quote_asset)
+            if quote_balance <= Decimal("0.0001"):
+                warning_lines.append(f"  {market_trading_pair_tuple.market.name} market "
+                                     f"{market_trading_pair_tuple.quote_asset} balance is too low. Cannot place order.")
+        return warning_lines
+
     def format_status(self) -> str:
         lines = []
         warning_lines = []
@@ -375,6 +422,11 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
             else:
                 lines.extend(["", "  No active maker market orders."])
 
+            if len(self.active_positions) > 0:
+                df = self.active_positions_df()
+                lines.extend(["", "  Positions:"] + ["    " + line for line in df.to_string(index=False).split("\n")])
+            else:
+                lines.extend(["", "  No active positions."])
             warning_lines.extend(self.balance_warning([market_pair.maker, market_pair.taker]))
 
         if len(warning_lines) > 0:
@@ -596,69 +648,77 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
         # If there are pending taker orders, wait for them to complete
         if self.has_active_taker_order(market_pair):
             return
-        if active_orders == 0 and len(self.session_active_positions) > 0:
+        if len(active_orders) == 0 and len(self.session_active_positions) > 0:
             await self.check_position_funding_rate_profitable(market_pair)
 
         # See if it's profitable to place a limit order on maker market.
         await self.check_and_create_new_orders(market_pair, has_active_bid, has_active_ask)
 
     async def check_position_funding_rate_profitable(self, market_pair):
-        maker_funding_rate, taker_funding_rate = await self.get_funding_info(market_pair)
-        maker_positions = market_pair.maker.market.account_positions
-        taker_positions = market_pair.taker.market.account_positions
-        maker_p = [idx if idx.trading_pair ==  market_pair.maker.trading_pair else None for idx in maker_positions.values()][0]
-        taker_p = [idx if idx.trading_pair ==  market_pair.taker.trading_pair else None for idx in taker_positions.values()][0]
-        # maker_funding_rate_pay = maker_funding_rate.rate * maker_p.amount * maker_funding_rate.mark_price if maker_p else 0
-        # taker_funding_rate_pay = taker_funding_rate.rate * taker_p.amount * taker_funding_rate.mark_price if taker_p else 0
-        maker_funding_rate_pay = maker_funding_rate.rate
-        taker_funding_rate_pay = taker_funding_rate.rate
-        max_funding_fee = max(abs(maker_funding_rate_pay), abs(taker_funding_rate_pay))
+        maker_funding_rate, taker_funding_rate = self.get_funding_info(market_pair)
+        _maker_funding_rate_t, _taker_funding_rate_t = maker_funding_rate.next_funding_utc_timestamp,taker_funding_rate.next_funding_utc_timestamp
+        if len(str(maker_funding_rate.next_funding_utc_timestamp)) == 13:
+            _maker_funding_rate_t = maker_funding_rate.next_funding_utc_timestamp * 1e-3
+        if len(str(taker_funding_rate.next_funding_utc_timestamp)) == 13:
+            _taker_funding_rate_t = taker_funding_rate.next_funding_utc_timestamp * 1e-3
+        self.logger().info(f"{self._config_map.maker_market} fungding fee is {maker_funding_rate.rate}, next funding_utc_timestamp is {_maker_funding_rate_t}")
+        self.logger().info(f"{self._config_map.taker_market} fungding fee is {taker_funding_rate.rate}, next funding_utc_timestamp is {_taker_funding_rate_t}")
+        the_latest_second_time = min(_maker_funding_rate_t, _taker_funding_rate_t)
+        now_time = time.time()
+        if the_latest_second_time - now_time < 5 * 60:
+            maker_positions = market_pair.maker.market.account_positions
+            taker_positions = market_pair.taker.market.account_positions
+            maker_p = [idx if idx.trading_pair ==  market_pair.maker.trading_pair else None for idx in maker_positions.values()][0]
+            taker_p = [idx if idx.trading_pair ==  market_pair.taker.trading_pair else None for idx in taker_positions.values()][0]
+            # maker_funding_rate_pay = maker_funding_rate.rate * maker_p.amount * maker_funding_rate.mark_price if maker_p else 0
+            # taker_funding_rate_pay = taker_funding_rate.rate * taker_p.amount * taker_funding_rate.mark_price if taker_p else 0
+            maker_funding_rate_pay = maker_funding_rate.rate
+            taker_funding_rate_pay = taker_funding_rate.rate
+            max_funding_fee = max(abs(maker_funding_rate_pay), abs(taker_funding_rate_pay))
 
-        maker_close_position_fee = market_pair.maker.market.trade_fee_schema.taker_percent_fee_decimal
-        taker_close_position_fee = market_pair.taker.market.trade_fee_schema.taker_percent_fee_decimal
-        max_close_fee = maker_close_position_fee + taker_close_position_fee
-        # close all position
-        if max_funding_fee >= max_close_fee:
-            self.logger().info(f"funding_fee_rate {max_funding_fee} greater than maker_close_position_fee + taker_close_position_fee {max_close_fee}")
-            maker_order_id = None
-            taker_order_id = None
-            if maker_p.position_side == PositionSide.SHORT:
-                maker_direction = self.buy_with_specific_market
-                taker_direction = self.sell_with_specific_market
-            else:
-                maker_direction = self.sell_with_specific_market
-                taker_direction = self.buy_with_specific_market
-            try:
-                maker_order_id = maker_direction(
-                            market_pair.maker,
-                            abs(maker_p.amount),
-                            order_type=OrderType.MARKET,
-                            price=maker_funding_rate.mark_price,
-                            position_action=PositionAction.CLOSE
-                    )
-            except ValueError as e:
-                self.logger().warning(f"Placing an order on market {str(market_pair.maker.market.name)} "
-                                      f"failed with the following error: {str(e)}")
-            if maker_order_id is not None:
-                self._sb_order_tracker.add_create_order_pending(maker_order_id)
-                self._market_pair_tracker.start_tracking_order_id(maker_order_id, market_pair.maker.market, market_pair)
-            try:
+            maker_close_position_fee = market_pair.maker.market.trade_fee_schema().taker_percent_fee_decimal
+            taker_close_position_fee = market_pair.taker.market.trade_fee_schema().taker_percent_fee_decimal
+            max_close_fee = maker_close_position_fee + taker_close_position_fee
+            # close all position
+            if max_funding_fee >= max_close_fee:
+                self.logger().info(f"funding_fee_rate {max_funding_fee} greater than maker_close_position_fee + taker_close_position_fee {max_close_fee}")
+                maker_order_id = None
                 taker_order_id = None
-                taker_order_id = taker_direction(
-                            market_pair.taker,
-                            abs(taker_p.amount),
-                            order_type=OrderType.MARKET,
-                            price=maker_funding_rate.mark_price,
-                            position_action=PositionAction.CLOSE
-                    )
-            except ValueError as e:
-                self.logger().warning(f"Placing an order on market {str(market_pair.taker.market.name)} "
-                                      f"failed with the following error: {str(e)}")
-            if taker_order_id is not None:
-                self._sb_order_tracker.add_create_order_pending(taker_order_id)
-                self._market_pair_tracker.start_tracking_order_id(taker_order_id, market_pair.taker.market, market_pair)
-
-
+                if maker_p.position_side == PositionSide.SHORT:
+                    maker_direction = self.buy_with_specific_market
+                    taker_direction = self.sell_with_specific_market
+                else:
+                    maker_direction = self.sell_with_specific_market
+                    taker_direction = self.buy_with_specific_market
+                try:
+                    maker_order_id = maker_direction(
+                                market_pair.maker,
+                                abs(maker_p.amount),
+                                order_type=OrderType.MARKET,
+                                price=maker_funding_rate.mark_price,
+                                position_action=PositionAction.CLOSE
+                        )
+                except ValueError as e:
+                    self.logger().warning(f"Placing an order on market {str(market_pair.maker.market.name)} "
+                                          f"failed with the following error: {str(e)}")
+                if maker_order_id is not None:
+                    self._sb_order_tracker.add_create_order_pending(maker_order_id)
+                    self._market_pair_tracker.start_tracking_order_id(maker_order_id, market_pair.maker.market, market_pair)
+                try:
+                    taker_order_id = None
+                    taker_order_id = taker_direction(
+                                market_pair.taker,
+                                abs(taker_p.amount),
+                                order_type=OrderType.MARKET,
+                                price=maker_funding_rate.mark_price,
+                                position_action=PositionAction.CLOSE
+                        )
+                except ValueError as e:
+                    self.logger().warning(f"Placing an order on market {str(market_pair.taker.market.name)} "
+                                          f"failed with the following error: {str(e)}")
+                if taker_order_id is not None:
+                    self._sb_order_tracker.add_create_order_pending(taker_order_id)
+                    self._market_pair_tracker.start_tracking_order_id(taker_order_id, market_pair.taker.market, market_pair)
 
 
 
@@ -1216,7 +1276,8 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
         else:
             # Maker sell
             # Taker buy
-            maker_balance = maker_market.get_available_balance(market_pair.maker.base_asset)
+            maker_balance_in_quote = maker_market.get_available_balance(market_pair.maker.quote_asset)
+            # maker_balance = maker_market.get_available_balance(market_pair.maker.base_asset)
             taker_balance_in_quote = taker_market.get_available_balance(market_pair.taker.quote_asset) * \
                                      self.order_size_taker_balance_factor
 
@@ -1241,6 +1302,7 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
                 self.logger().warning("Failed to obtain a taker buy order price. No order will be submitted.")
                 order_amount = Decimal("0")
             else:
+                maker_balance = maker_balance_in_quote / taker_price
                 taker_slippage_adjustment_factor = Decimal("1") + self.slippage_buffer
                 taker_balance = taker_balance_in_quote / (taker_price * taker_slippage_adjustment_factor)
                 taker_balance *= base_rate
@@ -1715,9 +1777,9 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
         #     base_rate = RateOracle.get_instance().rate(base_pair)
         #     return quote_rate / base_rate
 
-    async def get_funding_info(self, market_pair) -> Tuple[FundingInfo, FundingInfo]:
-        maker_funding_info = await market_pair.maker.market.get_funding_info(market_pair.maker.trading_pair)
-        taker_funding_info = await market_pair.taker.market.get_funding_info(market_pair.taker.trading_pair)
+    def get_funding_info(self, market_pair) -> Tuple[FundingInfo, FundingInfo]:
+        maker_funding_info = market_pair.maker.market.get_funding_info(market_pair.maker.trading_pair)
+        taker_funding_info = market_pair.taker.market.get_funding_info(market_pair.taker.trading_pair)
         return maker_funding_info, taker_funding_info
 
     async def check_and_create_new_orders(self,
@@ -1735,7 +1797,14 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
         """
 
         # if there is no active bid, place bid again
-        if not has_active_bid and self.session_active_positions[0].amount < 0:
+        has_short_position = False
+        has_long_position = False
+        if len(self.session_active_positions) > 0:
+            if self.session_active_positions[0].amount < 0:
+                has_short_position = True
+            else:
+                has_long_position = True
+        if not has_active_bid and not has_long_position:
             bid_size = await self.get_market_making_size(market_pair, True)
 
             if bid_size > s_decimal_zero:
@@ -1774,7 +1843,7 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
                         f"bid size is 0. Skipping. Check available balance."
                     )
         # if there is no active ask, place ask again
-        if not has_active_ask and self.session_active_positions[0].amount > 0:
+        if not has_active_ask and not has_short_position:
             ask_size = await self.get_market_making_size(market_pair, False)
 
             if ask_size > s_decimal_zero:
@@ -1827,7 +1896,7 @@ class PerpCrossExchangeMarketMakingStrategy(StrategyPyBase):
         market_info = market_pair.maker if is_maker else market_pair.taker
         # Market orders are not being submitted as taker orders, limit orders are preferred at all times
         order_type = market_info.market.get_maker_order_type() if is_maker else \
-            OrderType.LIMIT
+            OrderType.MARKET
         if order_type is OrderType.MARKET:
             price = s_decimal_nan
         expiration_seconds = self._config_map.order_refresh_mode.get_expiration_seconds()

@@ -507,7 +507,18 @@ class PerpCrossExchangeMarketMakingConfigMap(BaseTradingStrategyMakerTakerConfig
     def validate_exchange(cls, v: str, field: Field):
         """Used for client-friendly error output."""
         if field.name == "maker_market":
-            super().validate_exchange(v=v, field=field)
+            ret = validate_connector(v)
+            if ret is not None:
+                raise ValueError(ret)
+            cls.__fields__["maker_market"].type_ = ClientConfigEnum(  # rebuild the exchanges enum
+                value="TakerMarkets",  # noqa: F821
+                names={e: e for e in sorted(
+                    AllConnectorSettings.get_exchange_names().union(
+                        AllConnectorSettings.get_derivative_names()
+                    ))},
+                type=str,
+            )
+            cls._clear_schema_cache()
         if field.name == "taker_market":
             ret = validate_connector(v)
             if ret is not None:
@@ -516,7 +527,7 @@ class PerpCrossExchangeMarketMakingConfigMap(BaseTradingStrategyMakerTakerConfig
                 value="TakerMarkets",  # noqa: F821
                 names={e: e for e in sorted(
                     AllConnectorSettings.get_exchange_names().union(
-                        AllConnectorSettings.get_gateway_amm_connector_names()
+                        AllConnectorSettings.get_derivative_names()
                     ))},
                 type=str,
             )

@@ -18,7 +18,7 @@ TESTNET_WS_URL = "wss://betaws.bitexch.dev"
 
 FUNDING_RATE_INTERNAL_MIL_SECOND = 10 * 1000
 
-CURRENCY = "USD"
+CURRENCY = "USDT"
 
 SNAPSHOT_REST_URL = "/linear/v1/orderbooks"
 
