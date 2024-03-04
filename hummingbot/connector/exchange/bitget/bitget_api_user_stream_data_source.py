@@ -84,7 +84,7 @@ class BitgetAPIUserStreamDataSource(UserStreamTrackerDataSource):
                 subscription_payloads.append(
                     {
                         "instType": CONSTANTS.PRODUCT_TYPE.upper(),
-                        "channel": CONSTANTS.WS_SUBSCRIPTION_POSITIONS_ENDPOINT_NAME,
+                        "channel": CONSTANTS.WS_SUBSCRIPTION_TRADES_ENDPOINT_NAME,
                         "instId": "default",
                     }
                 )

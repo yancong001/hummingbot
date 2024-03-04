@@ -73,7 +73,7 @@ class BitgetExchange(ExchangePyBase):
 
     @property
     def client_order_id_max_length(self):
-        return None
+        return CONSTANTS.MAX_ID_LEN
 
     @property
     def client_order_id_prefix(self):
@@ -126,7 +126,7 @@ class BitgetExchange(ExchangePyBase):
         # The default implementation was added when the functionality to detect not found orders was introduced in the
         # ExchangePyBase class. Also fix the unit test test_cancel_order_not_found_in_the_exchange when replacing the
         # dummy implementation
-        return False
+        return CONSTANTS.UNKNOWN_ORDER_MESSAGE in str(cancelation_exception)
 
     def _create_web_assistants_factory(self) -> WebAssistantsFactory:
         return web_utils.build_api_factory(
@@ -217,19 +217,30 @@ class BitgetExchange(ExchangePyBase):
         path_url = CONSTANTS.ORDER_CREATE_PATH_URL
         side = trade_type.name.lower()
         order_type_str = "market" if order_type == OrderType.MARKET else "limit"
-        price = price.quantize(Decimal("0.00"))
         data = {
-            "size": str(amount.quantize(Decimal("0.00"))),
-            "clientOid": order_id[:20],
+            "size": str(amount),
+            "clientOid": order_id,
             "side": side,
             "symbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
             "orderType": order_type_str,
-            "force": CONSTANTS.DEFAULT_TIME_IN_FORCE,
         }
-        if order_type is OrderType.LIMIT:
+        if order_type.is_limit_type():
             data["price"] = str(price)
-        elif order_type is OrderType.LIMIT_MAKER:
-            data["price"] = str(price)
+            data["force"] = CONSTANTS.DEFAULT_TIME_IN_FORCE
+            if order_type is OrderType.LIMIT_MAKER:
+                data["force"] = "post_only"
+        else:
+            data["force"] = "ioc"
+            if trade_type.name.lower() == 'buy':
+                if price.is_nan():
+                    price = self.get_price_for_volume(
+                        trading_pair,
+                        True,
+                        amount
+                    ).result_price
+                data.update({
+                    "size": f"{price * amount:f}",
+                })
         resp = await self._api_post(
             path_url=path_url,
             data=data,
@@ -282,11 +293,12 @@ class BitgetExchange(ExchangePyBase):
                     payload = event_message["data"]
 
                     if endpoint is not None:
-                        if endpoint == CONSTANTS.WS_SUBSCRIPTION_POSITIONS_ENDPOINT_NAME:
-                            await self._process_account_position_event(payload)
+                        if endpoint == CONSTANTS.WS_SUBSCRIPTION_TRADES_ENDPOINT_NAME:
+                            for trade_msg in payload:
+                                self._process_trade_event_message(trade_msg)
                         elif endpoint == CONSTANTS.WS_SUBSCRIPTION_ORDERS_ENDPOINT_NAME:
                             for order_msg in payload:
-                                self._process_trade_event_message(order_msg)
+                                # self._process_trade_event_message(order_msg)
                                 self._process_order_event_message(order_msg)
                         elif endpoint == CONSTANTS.WS_SUBSCRIPTION_WALLET_ENDPOINT_NAME:
                             for wallet_msg in payload:
@@ -304,10 +316,13 @@ class BitgetExchange(ExchangePyBase):
         :param trade_msg: The trade event message payload
         """
 
-        client_order_id = str(trade_msg["clientOid"])
-        fillable_order = self._order_tracker.all_fillable_orders.get(client_order_id)
+        exchange_order_id = str(trade_msg["orderId"])
+        fillable_order = self._order_tracker.all_fillable_orders_by_exchange_order_id.get(exchange_order_id)
 
-        if fillable_order is not None and "orderId" in trade_msg:
+
+        if fillable_order is None:
+            self.logger().debug(f"Ignoring trade message with order id {exchange_order_id}: not in in_flight_orders.")
+        else:
             trade_update = self._parse_websocket_trade_update(trade_msg=trade_msg, tracked_order=fillable_order)
             if trade_update:
                 self._order_tracker.process_trade_update(trade_update)
@@ -333,15 +348,15 @@ class BitgetExchange(ExchangePyBase):
             self._order_tracker.process_order_update(new_order_update)
 
     def _parse_websocket_trade_update(self, trade_msg: Dict, tracked_order: InFlightOrder) -> TradeUpdate:
-        trade_id: str = trade_msg["orderId"]
+        trade_id: str = trade_msg["tradeId"]
         if trade_id is not None:
             trade_id = str(trade_id)
             fee_detail = trade_msg["feeDetail"]
             fee_amount = 0
             fee_asset = ""
             if len(fee_detail) > 0:
-                fee_asset = fee_detail["feeCoin"]
-                fee_amount = Decimal(fee_detail["fee"])
+                fee_asset = fee_detail[0]["feeCoin"]
+                fee_amount = Decimal(fee_detail[0]["totalFee"])
             flat_fees = [] if fee_amount == Decimal("0") else [TokenAmount(amount=fee_amount, token=fee_asset)]
 
             fee = TradeFeeBase.new_spot_fee(
@@ -351,8 +366,8 @@ class BitgetExchange(ExchangePyBase):
                 trade_type=tracked_order.trade_type,
             )
 
-            exec_price = Decimal(trade_msg["fillPrice"]) if "fillPrice" in trade_msg else Decimal(trade_msg["fillPrice"])
-            exec_time = int(trade_msg["fillTime"]) * 1e-3
+            exec_price = Decimal(trade_msg["priceAvg"])
+            exec_time = int(trade_msg["uTime"]) * 1e-3
 
             trade_update: TradeUpdate = TradeUpdate(
                 trade_id=trade_id,
@@ -361,8 +376,8 @@ class BitgetExchange(ExchangePyBase):
                 trading_pair=tracked_order.trading_pair,
                 fill_timestamp=exec_time,
                 fill_price=exec_price,
-                fill_base_amount=Decimal(trade_msg["baseVolume"]),
-                fill_quote_amount=exec_price * Decimal(trade_msg["baseVolume"]),
+                fill_base_amount=Decimal(trade_msg["size"]),
+                fill_quote_amount=exec_price * Decimal(trade_msg["size"]),
                 fee=fee,
             )
             return trade_update
@@ -374,7 +389,7 @@ class BitgetExchange(ExchangePyBase):
         """
         symbol = wallet_msg.get("coin", None)
         if symbol is not None:
-            available = Decimal(str(wallet_msg["available"]))
+            available = Decimal(str(wallet_msg["available"])) - Decimal(wallet_msg["frozen"])
             total = Decimal(str(wallet_msg["available"]))
             self._account_balances[symbol] = total
             self._account_available_balances[symbol] = available
@@ -390,7 +405,7 @@ class BitgetExchange(ExchangePyBase):
         if response:
             for balance_entry in response["data"]:
                 asset_name = balance_entry["coin"]
-                self._account_available_balances[asset_name] = Decimal(balance_entry["available"])
+                self._account_available_balances[asset_name] = Decimal(balance_entry["available"]) - Decimal(balance_entry["frozen"])
                 self._account_balances[asset_name] = Decimal(balance_entry["available"])
                 remote_asset_names.add(asset_name)
 
@@ -407,14 +422,16 @@ class BitgetExchange(ExchangePyBase):
                 try:
                     trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=info.get("symbol"))
                     minTradeAmount = Decimal(info["minTradeAmount"])
+                    min_price_inc = Decimal(f"1e-{info['pricePrecision']}")
+                    min_amount_inc = Decimal(f"1e-{info['quantityPrecision']}")
                     if minTradeAmount == 0:
-                        minTradeAmount = 0.0001
+                        minTradeAmount = Decimal(f"1e-{info['quotePrecision']}")
                     trading_rules.append(
                         TradingRule(trading_pair=trading_pair,
                                     min_order_size=minTradeAmount,
                                     max_order_size=Decimal(info["maxTradeAmount"]),
-                                    min_price_increment=minTradeAmount,
-                                    min_base_amount_increment=minTradeAmount,
+                                    min_price_increment=min_price_inc,
+                                    min_base_amount_increment=min_amount_inc,
                                     min_notional_size=Decimal(info["minTradeUSDT"]))
                     )
                 except Exception:
@@ -442,10 +459,12 @@ class BitgetExchange(ExchangePyBase):
 
     def _parse_trade_update(self, trade_msg: Dict, tracked_order: InFlightOrder) -> TradeUpdate:
         trade_id: str = str(trade_msg["tradeId"])
-
-        fee_asset = tracked_order.quote_asset
-        fee_amount = Decimal(trade_msg.get("fee", 0))
-
+        fee_detail = trade_msg["feeDetail"]
+        fee_amount = 0
+        fee_asset = ""
+        if len(fee_detail) > 0:
+            fee_asset = fee_detail["feeCoin"]
+            fee_amount = Decimal(fee_detail["totalFee"])
         flat_fees = [] if fee_amount == Decimal("0") else [TokenAmount(amount=fee_amount, token=fee_asset)]
 
         fee = TradeFeeBase.new_spot_fee(
@@ -455,13 +474,13 @@ class BitgetExchange(ExchangePyBase):
             trade_type=tracked_order.trade_type,
         )
 
-        exec_price = Decimal(trade_msg["price"])
-        exec_time = int(trade_msg["ts"]) * 1e-3
+        exec_price = Decimal(trade_msg["priceAvg"])
+        exec_time = int(trade_msg["uTime"]) * 1e-3
 
         trade_update: TradeUpdate = TradeUpdate(
             trade_id=trade_id,
             client_order_id=tracked_order.client_order_id,
-            exchange_order_id=str(trade_msg["tradeId"]),
+            exchange_order_id=str(trade_msg["orderId"]),
             trading_pair=tracked_order.trading_pair,
             fill_timestamp=exec_time,
             fill_price=exec_price,
@@ -541,17 +560,3 @@ class BitgetExchange(ExchangePyBase):
         )
         price = float(resp_json["data"]["bestAsk"])
         return price
-
-    def get_order_size_quantum(self, trading_pair: str, order_size: object):
-        """
-        Returns an order amount step, a minimum amount increment for a given trading pair.
-
-        Parameters
-        ----------
-        trading_pair:
-            The pair to which the quantization will apply
-        order_size:
-            Size to be quantized
-        """
-        trading_rule: TradingRule = self._trading_rules[trading_pair]
-        return Decimal(trading_rule.min_base_amount_increment)

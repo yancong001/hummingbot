@@ -23,7 +23,7 @@ MARKET = "market"
 PRODUCT_TYPE = "spot"
 
 # REST Public API endpoint
-SERVER_TIME_PATH_URL = "/api/spot/v1/public/time"
+SERVER_TIME_PATH_URL = "/api/v2/public/time"
 SYMBOL_PATH_URL = "/api/v2/spot/public/symbols"
 ORDER_BOOK_ENDPOINT = "/api/v2/spot/market/orderbook"
 ORDER_CREATE_PATH_URL = "/api/v2/spot/trade/place-order"
@@ -32,7 +32,7 @@ ORDER_DETAIL_PATH_URL = "/api/v2/spot/trade/orderInfo"
 USER_BALANCES_PATH_URL = "/api/v2/spot/account/assets"
 LATEST_SYMBOL_INFORMATION_ENDPOINT = "/api/v2/spot/market/fills"
 QUERY_ACTIVE_ORDER_PATH_URL = "/api/v2/spot/trade/orderInfo"
-USER_TRADE_RECORDS_PATH_URL = "/api/v2/spot/market/fills"
+USER_TRADE_RECORDS_PATH_URL = "/api/v2/spot/trade/fills"
 TRADING_FEE_QUERY_PATH_URL = "/api/v2/spot/market/vip-fee-rate"
 
 TRADES_ENDPOINT_NAME = "spot.trades"
@@ -82,10 +82,11 @@ WS_ORDER_BOOK_EVENTS_TOPIC = "books"
 WS_TRADES_TOPIC = "trade"
 WS_INSTRUMENTS_INFO_TOPIC = "tickers"
 WS_AUTHENTICATE_USER_ENDPOINT_NAME = "login"
-WS_SUBSCRIPTION_POSITIONS_ENDPOINT_NAME = "fill"
+WS_SUBSCRIPTION_TRADES_ENDPOINT_NAME = "fill"
 WS_SUBSCRIPTION_ORDERS_ENDPOINT_NAME = "orders"
 WS_SUBSCRIPTION_WALLET_ENDPOINT_NAME = "account"
 
+UNKNOWN_ORDER_MESSAGE = "43001"
 
 
 # Order Statuses

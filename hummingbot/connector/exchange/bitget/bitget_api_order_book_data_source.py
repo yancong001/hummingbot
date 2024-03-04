@@ -88,10 +88,11 @@ class BitgetAPIOrderBookDataSource(OrderBookTrackerDataSource):
         trading_pair = await self._connector.trading_pair_associated_to_exchange_symbol(symbol=inst_id)
 
         for trade_data in data:
-            ts_ms = int(trade_data["tradeId"])
+            ts_ms = int(trade_data["ts"])
+            trade_id = trade_data["tradeId"]
             trade_type = float(TradeType.BUY.value) if trade_data["side"] == "buy" else float(TradeType.SELL.value)
             message_content = {
-                "trade_id": ts_ms,
+                "trade_id": trade_id,
                 "trading_pair": trading_pair,
                 "trade_type": trade_type,
                 "amount": trade_data["size"],
@@ -156,7 +157,6 @@ class BitgetAPIOrderBookDataSource(OrderBookTrackerDataSource):
             for channel in [
                 self._diff_messages_queue_key,
                 self._trade_messages_queue_key,
-                self._funding_info_messages_queue_key,
             ]:
                 payloads.append({
                     "instType": CONSTANTS.PRODUCT_TYPE.upper(),
