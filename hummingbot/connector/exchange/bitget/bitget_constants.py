@@ -123,8 +123,8 @@ RATE_LIMITS = [
     ),
     RateLimit(
         limit_id=USER_TRADE_RECORDS_PATH_URL,
-        limit=20,
-        time_interval=2,
+        limit=10,
+        time_interval=1,
     ),
     RateLimit(
         limit_id=USER_BALANCES_PATH_URL,
@@ -138,7 +138,7 @@ RATE_LIMITS = [
     ),
     RateLimit(
         limit_id=ORDER_CREATE_PATH_URL,
-        limit=20,
+        limit=10,
         time_interval=1,
     ),
     RateLimit(
