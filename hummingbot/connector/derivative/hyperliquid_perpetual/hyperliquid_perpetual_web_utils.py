@@ -30,12 +30,12 @@ def public_rest_url(*args, **kwargs) -> str:
 
 
 def rest_url(path_url: str, domain: str = "hyperliquid_perpetual"):
-    base_url = CONSTANTS.PERPETUAL_BASE_URL if domain == "hyperliquid_perpetual" else CONSTANTS.TESTNET_BASE_URL
+    base_url = CONSTANTS.TESTNET_BASE_URL if "test" in domain else CONSTANTS.PERPETUAL_BASE_URL
     return base_url + path_url
 
 
 def wss_url(domain: str = "hyperliquid_perpetual"):
-    base_ws_url = CONSTANTS.PERPETUAL_WS_URL if domain == "hyperliquid_perpetual" else CONSTANTS.TESTNET_WS_URL
+    base_ws_url = CONSTANTS.TESTNET_BASE_URL if "test" in domain else CONSTANTS.PERPETUAL_BASE_URL
     return base_ws_url
 
 

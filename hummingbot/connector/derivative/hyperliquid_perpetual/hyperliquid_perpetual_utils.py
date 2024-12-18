@@ -72,10 +72,13 @@ class HyperliquidPerpetualConfigMap(BaseConnectorConfigMap):
 
 KEYS = HyperliquidPerpetualConfigMap.construct()
 
-OTHER_DOMAINS = ["hyperliquid_perpetual_testnet"]
-OTHER_DOMAINS_PARAMETER = {"hyperliquid_perpetual_testnet": "hyperliquid_perpetual_testnet"}
-OTHER_DOMAINS_EXAMPLE_PAIR = {"hyperliquid_perpetual_testnet": "BTC-USD"}
-OTHER_DOMAINS_DEFAULT_FEES = {"hyperliquid_perpetual_testnet": [0, 0.025]}
+OTHER_DOMAINS = ["hyperliquid_perpetual_testnet", "hyperliquid_perpetual_second_account"]
+OTHER_DOMAINS_PARAMETER = {"hyperliquid_perpetual_testnet": "hyperliquid_perpetual_testnet",
+                           "hyperliquid_perpetual_second_account": "hyperliquid_perpetual_second_account"}
+OTHER_DOMAINS_EXAMPLE_PAIR = {"hyperliquid_perpetual_testnet": "BTC-USD",
+                              "hyperliquid_perpetual_second_account": "BTC-USD"}
+OTHER_DOMAINS_DEFAULT_FEES = {"hyperliquid_perpetual_testnet": [0, 0.025],
+                              "hyperliquid_perpetual_second_account": [0, 0.025]}
 
 
 class HyperliquidPerpetualTestnetConfigMap(BaseConnectorConfigMap):
@@ -121,4 +124,45 @@ class HyperliquidPerpetualTestnetConfigMap(BaseConnectorConfigMap):
         return v
 
 
-OTHER_DOMAINS_KEYS = {"hyperliquid_perpetual_testnet": HyperliquidPerpetualTestnetConfigMap.construct()}
+class HyperliquidPerpetualSecondAccountConfigMap(BaseConnectorConfigMap):
+    connector: str = Field(default="hyperliquid_perpetual_second_account", client_data=None)
+    hyperliquid_perpetual_api_secret: SecretStr = Field(
+        default=...,
+        client_data=ClientFieldData(
+            prompt=lambda cm: "Enter your Arbitrum wallet private key",
+            is_secure=True,
+            is_connect_key=True,
+            prompt_on_new=True,
+        )
+    )
+    use_vault: bool = Field(
+        default="no",
+        client_data=ClientFieldData(
+            prompt=lambda cm: "Do you want to use the vault address?(Yes/No)",
+            is_secure=False,
+            is_connect_key=True,
+            prompt_on_new=True,
+        ),
+    )
+    hyperliquid_perpetual_api_key: SecretStr = Field(
+        default=...,
+        client_data=ClientFieldData(
+            prompt=lambda cm: "Enter your Arbitrum or vault address",
+            is_secure=True,
+            is_connect_key=True,
+            prompt_on_new=True,
+        )
+    )
+
+    @validator("use_vault", pre=True)
+    def validate_bool(cls, v: str):
+        """Used for client-friendly error output."""
+        if isinstance(v, str):
+            ret = validate_bool(v)
+            if ret is not None:
+                raise ValueError(ret)
+        return v
+
+
+OTHER_DOMAINS_KEYS = {"hyperliquid_perpetual_testnet": HyperliquidPerpetualTestnetConfigMap.construct(),
+                      "hyperliquid_perpetual_second_account": HyperliquidPerpetualSecondAccountConfigMap.construct()}
