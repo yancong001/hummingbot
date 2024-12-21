@@ -35,7 +35,7 @@ def rest_url(path_url: str, domain: str = "hyperliquid_perpetual"):
 
 
 def wss_url(domain: str = "hyperliquid_perpetual"):
-    base_ws_url = CONSTANTS.TESTNET_BASE_URL if "test" in domain else CONSTANTS.PERPETUAL_BASE_URL
+    base_ws_url = CONSTANTS.TESTNET_WS_URL if "test" in domain else CONSTANTS.PERPETUAL_WS_URL
     return base_ws_url
 
 
