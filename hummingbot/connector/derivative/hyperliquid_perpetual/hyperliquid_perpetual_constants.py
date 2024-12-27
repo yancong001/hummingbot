@@ -5,7 +5,7 @@ EXCHANGE_NAME = "hyperliquid_perpetual"
 BROKER_ID = "HBOT"
 MAX_ORDER_ID_LEN = None
 
-MARKET_ORDER_SLIPPAGE = 0.05
+MARKET_ORDER_SLIPPAGE = 0.20
 
 DOMAIN = EXCHANGE_NAME
 TESTNET_DOMAIN = "hyperliquid_perpetual_testnet"
