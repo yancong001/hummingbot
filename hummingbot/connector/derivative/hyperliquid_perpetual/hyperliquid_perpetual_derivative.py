@@ -498,12 +498,14 @@ class HyperliquidPerpetualDerivative(PerpetualDerivativePyBase):
                 "oid": int(exchange_order_id) if exchange_order_id else client_order_id
             })
         current_state = order_update["order"]["status"]
+        _exchange_order_id = str(tracked_order.exchange_order_id) if tracked_order.exchange_order_id else str(
+            order_update["order"]["order"]["oid"])
         _order_update: OrderUpdate = OrderUpdate(
             trading_pair=tracked_order.trading_pair,
             update_timestamp=order_update["order"]["order"]["timestamp"] * 1e-3,
             new_state=CONSTANTS.ORDER_STATE[current_state],
             client_order_id=order_update["order"]["order"]["cloid"] or client_order_id,
-            exchange_order_id=str(tracked_order.exchange_order_id),
+            exchange_order_id=_exchange_order_id,
         )
         return _order_update
 
